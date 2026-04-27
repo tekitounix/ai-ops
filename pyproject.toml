@@ -2,6 +2,9 @@
 name = "ai-ops"
 version = "0.1.0"
 description = "Cross-platform AI-first project lifecycle CLI"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
 
