@@ -4,8 +4,6 @@ import argparse
 import sys
 from pathlib import Path
 
-from ai_ops.agents.claude import ClaudeAgent
-from ai_ops.agents.codex import CodexAgent
 from ai_ops.agents.prompt_only import PromptOnlyAgent
 from ai_ops.agents.subprocess import SubprocessAgent
 from ai_ops.audit.lifecycle import run_lifecycle_audit
@@ -147,10 +145,6 @@ def resolve_agent(root: Path, override: str | None):
     name = config.default
     if name == "prompt-only":
         return PromptOnlyAgent()
-    if name == "claude":
-        return ClaudeAgent(config.commands["claude"])
-    if name == "codex":
-        return CodexAgent(config.commands["codex"])
     if name in config.commands:
         return SubprocessAgent(name, config.commands[name])
     print(f"Unknown agent: {name}; falling back to prompt-only", file=sys.stderr)

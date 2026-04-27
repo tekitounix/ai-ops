@@ -1,4 +1,4 @@
-# ADR 0014: Nix は optional な再現性 layer
+# ADR 0005: Nix は optional な再現性 layer
 
 > Status: Accepted
 > Date: 2026-04-27
@@ -9,7 +9,7 @@ Nix を optional but first-class な operations layer として使う。必須�
 
 ```text
 Python CLI: Nix なしで動く
-flake.nix: devShell / apps / checks を宣言
+flake.nix:  devShell / apps / checks を宣言
 flake.lock: Nix dependency universe を固定
 ```
 
@@ -30,5 +30,5 @@ direnv exec . nix flake check
 
 ## Related
 
-- ADR 0004: portability first
-- ADR 0016: Python canonical CLI
+- ADR 0002: portability first
+- ADR 0007: Python canonical CLI

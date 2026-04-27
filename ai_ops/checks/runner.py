@@ -13,6 +13,7 @@ from ai_ops.audit.security import run_security_audit
 
 def run_check(root: Path) -> int:
     fail = 0
+
     print("==> python compile")
     ai_ops_dir = root / "ai_ops"
     if ai_ops_dir.is_dir():
@@ -32,8 +33,13 @@ def run_check(root: Path) -> int:
 
     if (root / "tests").is_dir() and shutil.which("pytest"):
         print("==> pytest")
-        result = subprocess.run([sys.executable, "-m", "pytest"], cwd=root)
-        fail += 0 if result.returncode == 0 else 1
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest"],
+            cwd=str(root),
+            check=False,
+        )
+        if result.returncode != 0:
+            fail += 1
     else:
         print("==> pytest skipped (pytest or tests missing)")
 

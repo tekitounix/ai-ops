@@ -16,7 +16,7 @@ This repo is the cross-project AI operations source of truth. Keep it small. If 
 Use `README.md` as the user-facing entrypoint.
 
 ```text
-Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify
+Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -> Adopt
 ```
 
 - New project brief: `templates/project-brief.md`.

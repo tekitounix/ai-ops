@@ -8,7 +8,7 @@ REQUIRED_FILES = (
     "AGENTS.md",
     "docs/ai-first-lifecycle.md",
     "docs/project-addition-and-migration.md",
-    "docs/decisions/0016-python-canonical-cli.md",
+    "docs/decisions/0007-python-canonical-cli.md",
     "templates/project-brief.md",
     "templates/migration-brief.md",
     "templates/agent-handoff.md",

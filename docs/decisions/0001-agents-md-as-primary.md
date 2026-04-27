@@ -10,17 +10,16 @@
 ## Rationale
 
 - 複数 AI tool 間で同じルールを共有できる。
-- tool-specific 設定ファイルの重複を避けられる。
-- 人間がレビューする入口が 1 つになる。
+- tool-specific 設定ファイルへのルール散在を避けられる。
+- 人間のレビュー入口が 1 つに集約される。
 
 ## Consequences
 
-- `AGENTS.md` は短く保つ。
-- 一時的なタスク状態は書かない。
+- `AGENTS.md` は短く保つ。一時的なタスク状態は書かない。
 - 詳細説明は `docs/` に置き、必要時だけ読む。
 
 ## Related
 
-- ADR 0004: portability first
-- ADR 0015: AI-first lifecycle
-- ADR 0016: Python canonical CLI
+- ADR 0002: portability first
+- ADR 0006: AI-first project lifecycle
+- ADR 0007: Python canonical CLI

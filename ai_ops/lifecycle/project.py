@@ -89,7 +89,7 @@ def draft_project_brief(spec: ProjectSpec) -> str:
 - AGENTS.md / CLAUDE.md strategy: minimal AGENTS.md with CLAUDE.md adapter if needed
 - README strategy: describe purpose and first milestone
 - check strategy: project-specific command, no false green
-- .gitignore / secret hygiene: ADR 0008 patterns
+- .gitignore / secret hygiene: ADR 0004 patterns
 - Nix level: {spec.nix_level}
 
 ## 9. Execution Plan
