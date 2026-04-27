@@ -98,3 +98,22 @@ def test_audit_security_detects_env_in_cwd(tmp_path: Path, monkeypatch: pytest.M
 def test_check_targets_cwd_and_fails_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     assert main(["check"]) == 1
+
+
+def test_new_prompt_embeds_agents_md_rules(capsys: pytest.CaptureFixture[str]) -> None:
+    main(["new", "sample", "--purpose", "x", "--agent", "prompt-only", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "Operating rules (from ai-ops AGENTS.md" in out
+    assert "ghq" in out
+    assert "Propose -> Confirm -> Execute" in out
+
+
+def test_migrate_prompt_embeds_agents_md_rules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("legacy\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    main(["migrate", str(source), "--dry-run", "--agent", "prompt-only"])
+    out = capsys.readouterr().out
+    assert "Operating rules (from ai-ops AGENTS.md" in out
+    assert "ghq" in out

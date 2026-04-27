@@ -34,8 +34,10 @@ def discovery(source: Path) -> str:
 
 def build_migration_prompt(spec: MigrationSpec, *, root: Path) -> str:
     template = load_template(template_path("migration-brief.md", root=root))
+    agents_md = (root / "AGENTS.md").read_text(encoding="utf-8")
     return migration_prompt(
         template=template,
+        agents_md=agents_md,
         source=spec.source,
         tier=spec.tier,
         nix_level=spec.nix_level,

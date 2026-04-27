@@ -9,8 +9,10 @@ from ai_ops.paths import template_path
 
 def build_project_prompt(spec: ProjectSpec, *, root: Path) -> str:
     template = load_template(template_path("project-brief.md", root=root))
+    agents_md = (root / "AGENTS.md").read_text(encoding="utf-8")
     return project_prompt(
         template=template,
+        agents_md=agents_md,
         name=spec.name,
         purpose=spec.purpose,
         tier=spec.tier,
