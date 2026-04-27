@@ -10,6 +10,7 @@ This repo is the cross-project AI operations source of truth. Keep it small. If 
 - External projects: `~/ghq/<host>/<org>/<repo>/`.
 - Scratch work: `~/scratch/`, not a Git repo.
 - Do not create repos under Desktop, Documents, or ad-hoc work directories.
+- Cross-repo references in committed docs use URLs (`https://github.com/<owner>/<repo>/...`)。`~/ghq/...` は local working layout の説明にのみ使い、コミット済 doc 内の他 repo 参照には使わない。
 
 ## Lifecycle
 

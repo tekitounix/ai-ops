@@ -17,7 +17,7 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 | Confirm | user が 1 proposal を承認する | approved scope |
 | Agent Execute | AI agent が承認済み内容を通常ツールで実行する | files / repo / harness |
 | Verify | check と audit で実態を確認する | check output |
-| Adopt | 採用内容と延期事項を残す | Git diff / commit message / project docs |
+| Adopt | 採用内容と延期事項を記録する | `docs/brief-YYYYMMDD.md` / commit message / README / AGENTS.md 反映 |
 
 ## Agent Contract
 
@@ -32,6 +32,23 @@ AI agent は、重要な claim を必ず分類する。
 | AI recommendation | AI が推奨する default と理由 |
 
 AI は、質問する前に読めるものを読む。質問してよいのは、推測すると構造・機密・長期運用に害があり、かつ trade-off 付きの推奨を提示できる場合だけである。
+
+## Routes
+
+Lifecycle の入口は 2 route。両 route の到達点 (Brief / Proposal / Execute) は同じ。
+
+- **Chat route (主)**: `README.md` Quick start の prompt を AI agent (Claude Code、Codex、Cursor 等) に渡す。AI が repo を読み、本 lifecycle に自律的に乗る。対話 / IDE / 通常作業の主流。
+- **CLI route**: `ai-ops new` / `ai-ops migrate` を直接呼ぶ。CI、scripts、batch 処理向け。同じ lifecycle を CLI 側から triggers する。
+
+以降の節は CLI route の syntax を例示する。chat route は `README.md` 参照。
+
+## Brief artifact
+
+非自明な creation / migration では、**最初の Brief を `docs/brief-YYYYMMDD.md` として project に commit する** ことを推奨。後日「なぜ T2 にしたか」「stack 選定の理由」「言語方針」を辿れる archeology になる。
+
+CLI route なら `ai-ops new ... --output docs/brief-YYYYMMDD.md` でそのまま生成・commit できる。chat route ならセッション末尾の Brief 部分を copy & paste で `docs/brief-YYYYMMDD.md` に保存する。
+
+Brief template の各 section は project-specific に解釈する。fit しない section は "TBD" / "N/A" / 削除のいずれかで OK。research notes 等の non-code project では Verification Plan の lint / typecheck は無くて良い。
 
 ## 新規プロジェクト
 
@@ -108,6 +125,8 @@ git diff --check
 Nix が未導入でも `ai-ops check` は動く必要がある。Nix は optional wrapper であり、唯一の検証入口ではない。
 
 project-specific な検証は brief に書く。検証不能なものは「未検証」と明記し、完了扱いにしない。
+
+**Note**: `ai-ops audit lifecycle` は ai-ops 自身の structural integrity を確認する self-audit。新規 project の audit には使わない (project ごとに必要な構造が違うため)。各 project は project-specific check を持ち、`AGENTS.md` の Checks に記述する。`ai-ops audit security` は cwd を scan するので任意の project でも有用。
 
 ## Handoff
 
