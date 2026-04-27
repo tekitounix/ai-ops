@@ -42,14 +42,29 @@ def test_security_audit_detects_secrets_dir(tmp_path: Path) -> None:
 
 
 def test_security_audit_detects_aws_access_key_pattern(tmp_path: Path) -> None:
-    fixture = "AKI" + "A0123456789ABCDEF"
-    (tmp_path / "config.txt").write_text(fixture + "\n", encoding="utf-8")
+    (tmp_path / "config.txt").write_text("AKIA0123456789ABCDEF\n", encoding="utf-8")
     assert run_security_audit(tmp_path) == 1
 
 
 def test_security_audit_detects_private_key_header(tmp_path: Path) -> None:
-    header = "-----BEGIN " + "RSA PRIVATE KEY-----"
-    (tmp_path / "key.txt").write_text(header + "\n", encoding="utf-8")
+    (tmp_path / "key.txt").write_text(
+        "-----BEGIN RSA PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    assert run_security_audit(tmp_path) == 1
+
+
+def test_security_audit_skips_test_fixtures_under_tests_dir(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "fixture.txt").write_text("AKIA0123456789ABCDEF\n", encoding="utf-8")
+    assert run_security_audit(tmp_path) == 0
+
+
+def test_security_audit_still_flags_secret_named_files_under_tests_dir(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / ".env").write_text("placeholder\n", encoding="utf-8")
     assert run_security_audit(tmp_path) == 1
 
 

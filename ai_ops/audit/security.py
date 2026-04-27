@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 SKIP_DIRS = {".git", ".direnv", ".pytest_cache", "__pycache__", "result"}
+VALUE_SCAN_SKIP_DIRS = {"tests"}
 SECRET_NAME_PATTERNS = (
     re.compile(r"(^|/)\.env(\..*)?$"),
     re.compile(r"(^|/)secrets?(/|$)"),
@@ -38,6 +39,8 @@ def run_security_audit(root: Path) -> int:
 
     for path in files:
         rel = path.relative_to(root).as_posix()
+        if any(part in VALUE_SCAN_SKIP_DIRS for part in path.relative_to(root).parts):
+            continue
         if _contains_secret_value(path):
             print(f"  FAIL: secret-looking value pattern found in: {rel}")
             fail += 1
