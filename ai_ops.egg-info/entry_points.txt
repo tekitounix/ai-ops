@@ -1,2 +1,0 @@
-[console_scripts]
-ai-ops = ai_ops.cli:main
