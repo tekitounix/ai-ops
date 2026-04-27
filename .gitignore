@@ -1,0 +1,9 @@
+AGENTS.local.md
+/.claude/settings.local.json
+/.claude/projects/
+/.direnv/
+/.migration-status.lock/
+/.tmp/
+.pytest_cache/
+__pycache__/
+*.pyc
