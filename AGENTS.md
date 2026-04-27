@@ -60,12 +60,9 @@ Default policy:
 - Source code (identifiers / comments / tests)、commit messages、branch / tag 名、LICENSE: 英語。
 - README / AGENTS.md / docs/、issues / PRs: 英語が default。日本語 primary を選ぶ場合は project-specific brief で明示する。
 
-T1 (public) repo は accessibility のため英語版を併記するのが望ましい。working docs を日本語で書いていた場合の選択肢:
+T1 (public) repo の場合は **`README.md` を英語にし、`README.<locale>.md` (例: `README.ja.md`) を sibling として併置する** のが業界標準 pattern。GitHub project page で auto-render されるのは `README.md` のみのため、最初の入口を英語にするのが国際 contributor を取り逃さない最低条件。各ファイル冒頭に language selector 1 行を置く。
 
-- 主 doc を英訳して `README.ja.md` を残す
-- `README.md` (日本語) をそのまま、`README.en.md` を追加する
-
-どちらでもよく、整合の責任は project owner が持つ。
+working docs は日本語で運用しつつ、公開 surface (主 README) だけ英語にするのが最小コストで最大効果。AGENTS.md / docs/ / ADR の英語化は、需要が出てから段階的に sibling 併置する。
 
 ## Multi-agent
 

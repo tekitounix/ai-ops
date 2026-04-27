@@ -1,51 +1,53 @@
 # ai-ops
 
+**English** | [日本語](README.ja.md)
+
 AI-first project lifecycle system for creating, migrating, and operating projects with AI agents.
 
-## 最短開始
+## Quick start
 
-AI agent にそのまま渡す。
+Hand any of these prompts directly to an AI agent.
 
-新規プロジェクト (やりたいことだけ伝える):
-
-```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、「<やりたいこと>」を実現する新規プロジェクトを AI-first で立ち上げてください。プロジェクト名、配置先 (`~/ghq/github.com/<owner>/<repo>/`)、tier、stack、check 方法を AI 側で提案し、重要判断は確認しながら Propose -> Confirm -> Execute で進めてください。
-```
-
-新規プロジェクト (名前も指定する):
+New project (describe only what you want to do):
 
 ```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、<project-name> を「<one-line-purpose>」のために AI-first で新規作成してください。重要判断だけ確認し、Propose -> Confirm -> Execute で進めてください。
+Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, set up a new project AI-first to accomplish "<what you want>". Propose the project name, target path (`~/ghq/github.com/<owner>/<repo>/`), tier, stack, and check command, and proceed Propose -> Confirm -> Execute, confirming only the load-bearing decisions.
 ```
 
-既存プロジェクトを移行:
+New project (name fixed up front):
 
 ```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、<source-path> を AI-first で移行してください。まず read-only discovery を行い、移行案を提示してから Propose -> Confirm -> Execute で進めてください。
+Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, create <project-name> AI-first for "<one-line-purpose>". Confirm only the load-bearing decisions and proceed Propose -> Confirm -> Execute.
 ```
 
-CLI から直接始める:
+Migrate an existing project:
+
+```text
+Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, migrate <source-path> AI-first. Start with read-only discovery, present the migration plan, then proceed Propose -> Confirm -> Execute.
+```
+
+Or invoke the CLI directly:
 
 ```sh
 nix run github:tekitounix/ai-ops -- new my-app --purpose "Markdown note app"
 nix run github:tekitounix/ai-ops -- migrate "$HOME/ghq/github.com/user/project"
 ```
 
-すでに AI agent に依頼している場合、その AI は `ai-ops --agent claude` や `--agent codex` で別 AI を入れ子に呼びません。必要なら `--agent prompt-only` または `--dry-run` で prompt / brief / discovery だけを使います。
+If you are already inside an AI agent, do not nest a second AI via `ai-ops --agent claude` or `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
 
-## 役割
+## Roles
 
 ```text
-AI agent: project-specific な判断、提案、承認後の実行
-User: 公開範囲、機密境界、長期判断の確認
-Python CLI: discovery、prompt assembly、agent invocation、check/audit
+AI agent: project-specific judgment, proposals, post-approval execution
+User: visibility, secret boundaries, long-term decisions
+Python CLI: discovery, prompt assembly, agent invocation, check / audit
 Nix: optional reproducibility layer
-Git: 履歴と復元。repo 内 archive は通常不要
+Git: history and recovery; in-repo archive is usually unnecessary
 ```
 
-この repo は installer ではありません。ユーザーの shell、global git config、OS scheduler、AI tool の user config は自動変更しません。
+This repo is not an installer. It does not modify user shells, global git config, OS schedulers, or AI tool user configs.
 
-## 構成
+## Layout
 
 ```text
 README.md
@@ -62,9 +64,9 @@ docs/
 templates/
 ```
 
-履歴・旧計画・旧スクリプト・旧テンプレートは active tree に置きません。必要なら Git history から参照・復元します。
+History, old plans, legacy scripts, and obsolete templates are not kept in the active tree. Refer to or restore them from Git history when needed.
 
-## 検証
+## Verification
 
 ```sh
 python -m ai_ops check
@@ -73,4 +75,4 @@ direnv exec . nix flake check
 git diff --check
 ```
 
-Nix は optional です。Nix がない環境でも `python -m ai_ops check` は動く必要があります。
+Nix is optional. `python -m ai_ops check` must work in environments without Nix.
