@@ -53,6 +53,17 @@ One proposal requires one confirmation. Batch approval is forbidden. Read-only c
 - Deleting tracked files is done as Git deletion, not by moving them into an in-repo archive.
 - Prefer recovery-maximizing deletion: tracked file deletion via Git, then review with `git diff`; avoid `rm -rf`.
 
+## Multi-agent
+
+複数 AI agent を同 repo で並行運用する場合、各 AI tool の native worktree support を使う:
+
+- Claude Code: `claude --worktree <name>` で `.claude/worktrees/<name>/` に独立 working tree が作られ、退出時に未 commit 変更が無ければ自動 cleanup。
+- Codex: Codex App は worktree built-in。Codex CLI 単独なら `git worktree add ../<repo>.<branch> <branch>` で同等。
+
+実用上限は 2-4 並列。それを超えると orchestration コストが parallelism のメリットを上回る。大規模並行時は integration branch を 1 本立てて段階的に main に取り込む。同一ファイルへの並行 edit は避け、agent ごとに担当ファイルを分離する。
+
+`ai-ops` の各コマンドは worktree compatible で、実行 cwd を root として扱う。worktree 内から `ai-ops new` / `migrate` / `audit` / `check` をそのまま使える。
+
 ## Checks
 
 Before reporting completion for this repo:
