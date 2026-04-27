@@ -6,24 +6,24 @@ AI-first project lifecycle system for creating, migrating, and operating project
 
 ## 最短開始
 
-AI agent にそのまま渡す。
+AI agent にそのまま渡す。残りは agent が repo を読んで処理する。
 
 新規プロジェクト (やりたいことだけ伝える):
 
 ```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、「<やりたいこと>」を実現する新規プロジェクトを AI-first で立ち上げてください。プロジェクト名、配置先 (`~/ghq/github.com/<owner>/<repo>/`)、tier、stack、check 方法を AI 側で提案し、重要判断は確認しながら Propose -> Confirm -> Execute で進めてください。
+github.com/tekitounix/ai-ops に従って、「<やりたいこと>」のための新規プロジェクトを立ち上げてください。
 ```
 
 新規プロジェクト (名前も指定する):
 
 ```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、<project-name> を「<one-line-purpose>」のために AI-first で新規作成してください。重要判断だけ確認し、Propose -> Confirm -> Execute で進めてください。
+github.com/tekitounix/ai-ops に従って、<project-name> を「<one-line-purpose>」のために作成してください。
 ```
 
 既存プロジェクトを移行:
 
 ```text
-github.com/tekitounix/ai-ops の README.md、AGENTS.md、docs/ai-first-lifecycle.md に従い、<source-path> を AI-first で移行してください。まず read-only discovery を行い、移行案を提示してから Propose -> Confirm -> Execute で進めてください。
+github.com/tekitounix/ai-ops に従って、<source-path> を移行してください。
 ```
 
 CLI から直接始める:

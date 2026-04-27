@@ -6,24 +6,24 @@ AI-first project lifecycle system for creating, migrating, and operating project
 
 ## Quick start
 
-Hand any of these prompts directly to an AI agent.
+Hand any of these to an AI agent. The agent reads the repo for the rest.
 
-New project (describe only what you want to do):
+New project, describe what you want:
 
 ```text
-Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, set up a new project AI-first to accomplish "<what you want>". Propose the project name, target path (`~/ghq/github.com/<owner>/<repo>/`), tier, stack, and check command, and proceed Propose -> Confirm -> Execute, confirming only the load-bearing decisions.
+Per github.com/tekitounix/ai-ops, set up a new project for "<what you want>".
 ```
 
-New project (name fixed up front):
+New project with a fixed name:
 
 ```text
-Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, create <project-name> AI-first for "<one-line-purpose>". Confirm only the load-bearing decisions and proceed Propose -> Confirm -> Execute.
+Per github.com/tekitounix/ai-ops, create <project-name> for "<one-line-purpose>".
 ```
 
 Migrate an existing project:
 
 ```text
-Following github.com/tekitounix/ai-ops's README.md, AGENTS.md, and docs/ai-first-lifecycle.md, migrate <source-path> AI-first. Start with read-only discovery, present the migration plan, then proceed Propose -> Confirm -> Execute.
+Per github.com/tekitounix/ai-ops, migrate <source-path>.
 ```
 
 Or invoke the CLI directly:
