@@ -61,6 +61,7 @@
 - AI must not edit:
 - Required checks before reporting done:
 - Destructive operations policy:
+- Language strategy (code / docs / public-facing):
 
 ## 8. Initial Files
 

@@ -53,6 +53,20 @@ One proposal requires one confirmation. Batch approval is forbidden. Read-only c
 - Deleting tracked files is done as Git deletion, not by moving them into an in-repo archive.
 - Prefer recovery-maximizing deletion: tracked file deletion via Git, then review with `git diff`; avoid `rm -rf`.
 
+## Natural language
+
+Default policy:
+
+- Source code (identifiers / comments / tests)、commit messages、branch / tag 名、LICENSE: 英語。
+- README / AGENTS.md / docs/、issues / PRs: 英語が default。日本語 primary を選ぶ場合は project-specific brief で明示する。
+
+T1 (public) repo は accessibility のため英語版を併記するのが望ましい。working docs を日本語で書いていた場合の選択肢:
+
+- 主 doc を英訳して `README.ja.md` を残す
+- `README.md` (日本語) をそのまま、`README.en.md` を追加する
+
+どちらでもよく、整合の責任は project owner が持つ。
+
 ## Multi-agent
 
 複数 AI agent を同 repo で並行運用する場合、各 AI tool の native worktree support を使う:

@@ -48,6 +48,7 @@
 - Secret hygiene:
 - Nix level:
 - Tool-specific settings:
+- Language strategy (code / docs / public-facing):
 
 ## 6. Files
 
