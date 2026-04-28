@@ -1,0 +1,54 @@
+{
+  # xmake (組込み) devshell — xmake.lua / CMakeLists.txt with embedded toolchain。
+  # xmake が build / cross-toolchain を担当、Nix は dev tooling layer。
+  # 商用 SDK / vendor binary の overlay は inputs に追加して派生する。
+  # Replace {{PROJECT_NAME}} with project name.
+  description = "{{PROJECT_NAME}} dev shell (xmake / embedded)";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
+  outputs =
+    { self, nixpkgs }:
+    let
+      systems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "aarch64-linux"
+        "x86_64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      pkgsFor = system: import nixpkgs { inherit system; };
+      tools =
+        pkgs:
+        [
+          # Common
+          pkgs.git
+          pkgs.jq
+          pkgs.shellcheck
+          pkgs.shfmt
+          # xmake build layer
+          pkgs.xmake
+          pkgs.cmake
+          pkgs.ninja
+          pkgs.gcc
+          pkgs.clang-tools
+          # AI orchestration / scripts
+          pkgs.python311
+          # Pre-commit hooks
+          pkgs.pre-commit
+        ];
+    in
+    {
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          default = pkgs.mkShell {
+            packages = tools pkgs;
+          };
+        }
+      );
+    };
+}

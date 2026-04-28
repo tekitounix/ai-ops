@@ -46,7 +46,10 @@
 - Existing AI config preserve / replace:
 - Check command strategy:
 - Secret hygiene:
-- Nix level:
+- Nix decision: <preserve-existing|amend|replace|adopt-new|opt-out>
+- Nix level: <auto|none|devshell|apps|full> (default `auto` → rubric で解決)
+- Nix なし justification: (opt-out 時のみ必須、Stage A exit or score < 0 の理由)
+- Rubric output (JSON): {"stage_a_exit": null, "stack_hint": "...", "recommended_level": "...", "score": 0, "confidence": "..."}
 - Tool-specific settings:
 - Language strategy (code / docs / public-facing):
 

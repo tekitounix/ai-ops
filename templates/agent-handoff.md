@@ -25,6 +25,8 @@ Read these files first:
 - Files changed:
 - Files intentionally untouched:
 - External/user environment changes:
+- Nix state: <flake exists / level / last lock date>
+- Reproducibility tool: <nix-flake|none|other>
 
 ## 4. Commands Already Run
 

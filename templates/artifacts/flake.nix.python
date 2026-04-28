@@ -1,0 +1,54 @@
+{
+  # Python devshell — pyproject.toml / uv.lock / requirements.txt 系 project。
+  # Cargo.toml / go.mod 系も pkgs.cargo / pkgs.go を tools に追加して派生可。
+  # Replace {{PROJECT_NAME}} with project name.
+  description = "{{PROJECT_NAME}} dev shell (Python)";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
+  outputs =
+    { self, nixpkgs }:
+    let
+      systems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "aarch64-linux"
+        "x86_64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      pkgsFor = system: import nixpkgs { inherit system; };
+      pythonFor =
+        pkgs:
+        pkgs.python311.withPackages (
+          ps: [
+            ps.pytest
+          ]
+        );
+      tools =
+        pkgs:
+        [
+          # Common
+          pkgs.git
+          pkgs.jq
+          pkgs.shellcheck
+          pkgs.shfmt
+          # Python stack
+          (pythonFor pkgs)
+          pkgs.uv
+          pkgs.ruff
+        ];
+    in
+    {
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          default = pkgs.mkShell {
+            packages = tools pkgs;
+          };
+        }
+      );
+    };
+}

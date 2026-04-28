@@ -69,7 +69,7 @@ ai-ops new my-app --purpose "Markdown note app" --agent prompt-only
 - data / secrets / production access の境界
 - AI が自由に触ってよい範囲と確認が必要な範囲
 - check command
-- Nix adoption level (`none`, `devshell`, `apps`, `full`)
+- Nix adoption level (`none`, `devshell`, `apps`, `full`) — default-required, AI agent が rubric (Stage A/B/C) で機械決定 (ADR 0005 amended 2026-04-29)
 - 初回 milestone
 
 ## 既存プロジェクト移行
@@ -122,7 +122,7 @@ direnv exec . nix flake check
 git diff --check
 ```
 
-Nix が未導入でも `ai-ops check` は動く必要がある。Nix は optional wrapper であり、唯一の検証入口ではない。
+`ai-ops check` は Nix なしでも bootstrap fallback として動く。ただし Nix は default-required reproducibility layer (ADR 0005 amended)、stack-bearing project では `ai-ops audit nix` fail が `ai-ops check` fail を引き起こす。Nix install は `ai-ops bootstrap` で user 承認後に実行。
 
 project-specific な検証は brief に書く。検証不能なものは「未検証」と明記し、完了扱いにしない。
 

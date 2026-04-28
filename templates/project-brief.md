@@ -69,7 +69,9 @@
 - README strategy:
 - Check command strategy:
 - .gitignore / secret hygiene:
-- Nix level:
+- Nix level: <auto|none|devshell|apps|full> (default `auto` → rubric で解決)
+- Nix なし justification: (Nix level: none を選ぶ場合のみ必須、Stage A exit or score < 0 の理由)
+- Rubric output (JSON): {"stage_a_exit": null, "stack_hint": "...", "recommended_level": "...", "score": 0, "confidence": "..."}
 
 ## 9. Execution Plan
 

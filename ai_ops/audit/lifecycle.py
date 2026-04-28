@@ -12,11 +12,17 @@ REQUIRED_FILES = (
     "templates/project-brief.md",
     "templates/migration-brief.md",
     "templates/agent-handoff.md",
+    "templates/artifacts/flake.nix.minimal",
+    "templates/artifacts/flake.nix.node",
+    "templates/artifacts/flake.nix.python",
+    "templates/artifacts/flake.nix.xmake",
+    "templates/artifacts/.envrc",
     "pyproject.toml",
     ".github/workflows/ci.yml",
     "ai_ops/cli.py",
     "ai_ops/lifecycle/project.py",
     "ai_ops/lifecycle/migration.py",
+    "ai_ops/bootstrap.py",
 )
 
 CLASSIFICATION_TERMS = ("Fact", "Inference", "Risk", "User decision", "AI recommendation")
@@ -103,6 +109,11 @@ def run_lifecycle_audit(root: Path) -> int:
         root / "templates" / "project-brief.md",
         root / "templates" / "migration-brief.md",
         root / "templates" / "agent-handoff.md",
+        root / "templates" / "artifacts" / "flake.nix.minimal",
+        root / "templates" / "artifacts" / "flake.nix.node",
+        root / "templates" / "artifacts" / "flake.nix.python",
+        root / "templates" / "artifacts" / "flake.nix.xmake",
+        root / "templates" / "artifacts" / ".envrc",
     }
     template_root = root / "templates"
     if template_root.exists():

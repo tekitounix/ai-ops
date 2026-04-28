@@ -1,0 +1,46 @@
+{
+  # Node.js devshell — package.json / pnpm-lock.yaml / bun.lockb 系 project。
+  # Replace {{PROJECT_NAME}} with project name. Adjust nodejs version if needed.
+  description = "{{PROJECT_NAME}} dev shell (Node.js)";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
+  outputs =
+    { self, nixpkgs }:
+    let
+      systems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "aarch64-linux"
+        "x86_64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      pkgsFor = system: import nixpkgs { inherit system; };
+      tools =
+        pkgs:
+        [
+          # Common
+          pkgs.git
+          pkgs.jq
+          pkgs.shellcheck
+          pkgs.shfmt
+          # Node.js stack
+          pkgs.nodejs_20
+          pkgs.pnpm
+          pkgs.corepack
+        ];
+    in
+    {
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          default = pkgs.mkShell {
+            packages = tools pkgs;
+          };
+        }
+      );
+    };
+}

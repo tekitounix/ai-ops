@@ -7,8 +7,9 @@ from pathlib import Path
 from ai_ops.agents.prompt_only import PromptOnlyAgent
 from ai_ops.agents.subprocess import SubprocessAgent
 from ai_ops.audit.lifecycle import run_lifecycle_audit
-from ai_ops.audit.nix import run_nix_audit
+from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
 from ai_ops.audit.security import run_security_audit
+from ai_ops.bootstrap import run_install, run_update
 from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
@@ -38,7 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--interactive", action="store_true")
     new.add_argument("--tier", choices=("T1", "T2", "T3"), default="T3")
     new.add_argument("--type", dest="project_type", choices=("global", "monorepo", "stm32"), default="global")
-    new.add_argument("--nix", dest="nix_level", choices=("none", "devshell", "apps", "full"), default="none")
+    new.add_argument(
+        "--nix",
+        dest="nix_level",
+        choices=("auto", "none", "devshell", "apps", "full"),
+        default="auto",
+        help="Nix level (default 'auto' = AI agent decides via per-project rubric, ADR 0005)",
+    )
     new.add_argument("--output", type=Path)
     new.add_argument("--dry-run", action="store_true")
     new.set_defaults(handler=handle_new)
@@ -48,9 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("--agent")
     migrate.add_argument("--interactive", action="store_true")
     migrate.add_argument("--tier", choices=("T1", "T2", "T3"), default="T3")
-    migrate.add_argument("--nix", dest="nix_level", choices=("none", "devshell", "apps", "full"), default="none")
+    migrate.add_argument(
+        "--nix",
+        dest="nix_level",
+        choices=("auto", "none", "devshell", "apps", "full"),
+        default="auto",
+        help="Nix level (default 'auto' = AI agent decides via per-project rubric, ADR 0005)",
+    )
     migrate.add_argument("--output", type=Path)
     migrate.add_argument("--dry-run", action="store_true")
+    migrate.add_argument(
+        "--retrofit-nix",
+        action="store_true",
+        help="Narrow scope to Nix retrofit only (existing managed project に flake.nix を追加する)",
+    )
     migrate.set_defaults(handler=handle_migrate)
 
     check = sub.add_parser("check", help="Run ai-ops repository checks")
@@ -58,7 +76,46 @@ def build_parser() -> argparse.ArgumentParser:
 
     audit = sub.add_parser("audit", help="Run read-only audits")
     audit.add_argument("kind", nargs="?", choices=("lifecycle", "nix", "security"), default="lifecycle")
+    audit.add_argument(
+        "--report",
+        action="store_true",
+        help="Nix only: walk ghq list -p and print fleet survey",
+    )
+    audit.add_argument(
+        "--propose",
+        type=Path,
+        metavar="PATH",
+        help="Nix only: emit Markdown retrofit proposal for a single project",
+    )
     audit.set_defaults(handler=handle_audit)
+
+    bootstrap = sub.add_parser(
+        "bootstrap",
+        help="Survey and (with user confirmation) install required tools (ADR 0002 amendment)",
+    )
+    bootstrap.add_argument(
+        "--tier",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="Install tools at or below this tier (default 1 = required only)",
+    )
+    bootstrap.add_argument("--dry-run", action="store_true")
+    bootstrap.set_defaults(handler=handle_bootstrap)
+
+    update = sub.add_parser(
+        "update",
+        help="Survey and (with user confirmation) update present tools",
+    )
+    update.add_argument(
+        "--tier",
+        type=int,
+        choices=(1, 2),
+        default=2,
+        help="Update tools at or below this tier (default 2 = include recommended)",
+    )
+    update.add_argument("--dry-run", action="store_true")
+    update.set_defaults(handler=handle_update)
     return parser
 
 
@@ -113,7 +170,9 @@ def handle_migrate(args: argparse.Namespace, root: Path) -> int:
         return 2
     source = Path(source_text).expanduser().resolve()
     spec = MigrationSpec(source=source, tier=args.tier, nix_level=args.nix_level, output=args.output)
-    prompt = build_migration_prompt(spec, root=package_root())
+    prompt = build_migration_prompt(
+        spec, root=package_root(), retrofit_nix=getattr(args, "retrofit_nix", False)
+    )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(prompt, encoding="utf-8")
@@ -134,10 +193,22 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
     if args.kind == "lifecycle":
         return run_lifecycle_audit(root)
     if args.kind == "nix":
+        if args.propose:
+            return run_nix_propose(args.propose.resolve())
+        if args.report:
+            return run_nix_report()
         return run_nix_audit(root)
     if args.kind == "security":
         return run_security_audit(root)
     raise AssertionError(args.kind)
+
+
+def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
+    return run_install(tier_max=args.tier, dry_run=args.dry_run)
+
+
+def handle_update(args: argparse.Namespace, _root: Path) -> int:
+    return run_update(tier_max=args.tier, dry_run=args.dry_run)
 
 
 def resolve_agent(root: Path, override: str | None):

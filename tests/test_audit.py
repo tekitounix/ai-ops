@@ -5,18 +5,26 @@ from ai_ops.audit.security import run_security_audit
 
 
 def test_nix_audit_passes_with_correct_flake(tmp_path: Path) -> None:
-    (tmp_path / "flake.nix").write_text("python ai_ops here", encoding="utf-8")
+    """Existing flake with devShells passes (loose match for non-ai-ops repos)."""
+    (tmp_path / "flake.nix").write_text(
+        "{ outputs = { ... }: { devShells = {}; }; }",
+        encoding="utf-8",
+    )
     (tmp_path / "flake.lock").write_text("{}\n", encoding="utf-8")
     assert run_nix_audit(tmp_path) == 0
 
 
-def test_nix_audit_fails_when_flake_missing(tmp_path: Path) -> None:
+def test_nix_audit_fails_when_stack_present_but_flake_missing(tmp_path: Path) -> None:
+    """stack signal (package.json) なのに flake.nix 無し → recommended=devshell, gap=missing-flake → FAIL."""
+    (tmp_path / "package.json").write_text('{"name":"x"}', encoding="utf-8")
     assert run_nix_audit(tmp_path) == 1
 
 
-def test_nix_audit_fails_when_flake_does_not_reference_python_cli(tmp_path: Path) -> None:
-    (tmp_path / "flake.nix").write_text("just rust", encoding="utf-8")
-    assert run_nix_audit(tmp_path) == 1
+def test_nix_audit_passes_when_no_stack_signal(tmp_path: Path) -> None:
+    """No stack signal AND no flake → minimal recommendation (no fail in non-ai-ops cwd)."""
+    # empty dir — Stage A (no archive / scratch / docs-only / fork), Stage B unknown=minimal,
+    # Stage C score=0. recommended=minimal (not devshell/apps/full) → no FAIL.
+    assert run_nix_audit(tmp_path) == 0
 
 
 def test_security_audit_clean_repo_passes(tmp_path: Path) -> None:
