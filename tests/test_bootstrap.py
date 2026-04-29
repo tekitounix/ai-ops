@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from ai_ops import bootstrap
@@ -113,3 +115,130 @@ def test_detect_os_returns_unknown_when_no_package_manager(
     monkeypatch.setattr(bootstrap.platform, "release", lambda: "6.0.0-generic")
     monkeypatch.setattr(bootstrap.shutil, "which", lambda _name: None)
     assert bootstrap.detect_os() == bootstrap.OS_UNKNOWN
+
+
+# ─────────────────────────────────────────────────────
+# install / update logic — actual subprocess paths
+# ─────────────────────────────────────────────────────
+
+
+def _stub_all_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every tool appear missing so run_install attempts to install."""
+    monkeypatch.setattr(bootstrap, "tool_present", lambda _t: False)
+    monkeypatch.setattr(bootstrap, "tool_version", lambda _t: None)
+
+
+def _stub_all_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "tool_present", lambda _t: True)
+    monkeypatch.setattr(bootstrap, "tool_version", lambda _t: "x.y.z")
+
+
+_INSTALL_PREFIXES = ("brew", "sudo", "sh", "apt-get")
+
+
+def _make_capturing_run(captured: list[list[str]], returncode: int = 0):
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        first = cmd[0] if cmd else ""
+        if first in _INSTALL_PREFIXES:
+            captured.append(list(cmd))
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        # leave everything else alone
+        return subprocess.run(cmd, *args, **kwargs)
+
+    return fake_run
+
+
+def test_run_install_invokes_subprocess_after_user_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User confirms with 'y' → install command is invoked for each missing tool."""
+    import subprocess as _subprocess
+
+    captured: list[list[str]] = []
+    _stub_all_missing(monkeypatch)
+    monkeypatch.setattr(bootstrap.subprocess, "run", _make_capturing_run(captured))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_MACOS)
+    assert rc == 0
+    assert captured, "expected install commands to be invoked"
+    # tier-1 has 6 tools; all should be attempted under macOS
+    assert len(captured) == 6
+    del _subprocess  # unused
+
+
+def test_run_install_returns_error_on_subprocess_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When subprocess.run raises CalledProcessError, run_install returns 1."""
+    captured: list[list[str]] = []
+    _stub_all_missing(monkeypatch)
+    monkeypatch.setattr(
+        bootstrap.subprocess, "run", _make_capturing_run(captured, returncode=2)
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_MACOS)
+    assert rc == 1
+
+
+def test_run_install_returns_error_on_filenotfound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the install binary is missing entirely, FileNotFoundError → fail."""
+
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        first = cmd[0] if cmd else ""
+        if first in _INSTALL_PREFIXES:
+            raise FileNotFoundError(f"command not found: {first}")
+        return subprocess.run(cmd, *args, **kwargs)
+
+    _stub_all_missing(monkeypatch)
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_MACOS)
+    assert rc == 1
+
+
+def test_run_install_aborts_when_user_declines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User answers 'n' → no install attempted; tier-1 missing → exit 1."""
+    captured: list[list[str]] = []
+    _stub_all_missing(monkeypatch)
+    monkeypatch.setattr(bootstrap.subprocess, "run", _make_capturing_run(captured))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_MACOS)
+    assert captured == []
+    assert rc == 1  # tier-1 still missing
+
+
+def test_run_install_returns_zero_when_all_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If nothing is missing, run_install returns 0 without prompting."""
+    _stub_all_present(monkeypatch)
+    # Even an `input` call would raise OSError under pytest if no stdin —
+    # asserting we never reach it is enforced by the rc==0 short-circuit.
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_MACOS)
+    assert rc == 0
+
+
+def test_run_update_skips_tools_with_no_command_for_os(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tool with no install_via entry for current OS is reported but not run."""
+    _stub_all_present(monkeypatch)
+    captured: list[list[str]] = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", _make_capturing_run(captured))
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    # Use a synthetic OS that no tool registers update commands for.
+    rc = bootstrap.run_update(tier_max=2, os_override="zos-fictional")
+    # Nothing matched, nothing invoked, no failures → rc 0.
+    assert rc == 0
+    assert captured == []

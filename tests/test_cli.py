@@ -89,6 +89,16 @@ def test_audit_lifecycle_targets_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert main(["audit", "lifecycle"]) == 1
 
 
+def test_audit_lifecycle_passes_on_real_ai_ops_repo() -> None:
+    """End-to-end happy path: ai-ops's own self-audit must pass on its own
+    repository. Without this, only failure paths are exercised, and we'd never
+    notice if a future change made the success path silently impossible."""
+    from ai_ops.audit.lifecycle import run_lifecycle_audit
+
+    repo = Path(__file__).resolve().parents[1]
+    assert run_lifecycle_audit(repo) == 0
+
+
 def test_audit_security_detects_env_in_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".env").write_text("API_TOKEN=fake\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)

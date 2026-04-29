@@ -185,6 +185,7 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
+    """mtime-based fallback path: untracked plan with old mtime is flagged."""
     from ai_ops.audit.lifecycle import _check_plan_hygiene
 
     plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
@@ -200,17 +201,77 @@ def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
     assert any("active for >30 days" in warning for warning in warnings)
 
 
-def test_lifecycle_audit_forbidden_pattern_grep(tmp_path: Path) -> None:
-    """Phase 8-D: forbidden patterns from ADR are detected when present in active code."""
-    from ai_ops.audit.lifecycle import _scan_pattern_in_paths
+def test_plan_age_prefers_git_log_over_mtime(tmp_path: Path) -> None:
+    """When the plan is tracked in git, _plan_age uses commit time, not mtime.
 
-    # Make a fake "ai_ops" tree under tmp_path with a forbidden pattern as a literal command.
-    (tmp_path / "ai_ops").mkdir()
-    (tmp_path / "ai_ops" / "bad.py").write_text(
-        'os.system("rm -rf /tmp/x")\n', encoding="utf-8"
+    This protects against the CI / fresh-clone case where mtime is reset to
+    the checkout time and a genuinely stale plan would otherwise look fresh.
+    """
+    from ai_ops.audit.lifecycle import _plan_age
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@test"], check=True
     )
-    hits = _scan_pattern_in_paths(tmp_path, r"\brm\s+-rf\b", ("ai_ops",))
-    assert hits, "forbidden `rm -rf` should be detected"
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "test"], check=True
+    )
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# Feature\n", encoding="utf-8")
+
+    # Commit the plan as if it had been committed long ago.
+    far_past = "2020-01-01T00:00:00Z"
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": far_past,
+        "GIT_COMMITTER_DATE": far_past,
+    }
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-q", "-m", "old plan"],
+        check=True,
+        env=env,
+    )
+
+    # Force mtime to "now" so mtime alone would say the plan is fresh.
+    now = datetime(2026, 4, 29, tzinfo=timezone.utc)
+    os.utime(plan, (now.timestamp(), now.timestamp()))
+
+    age = _plan_age(plan, tmp_path, now)
+    # Commit was 2020 → age should be > 5 years; far above the 30-day threshold.
+    assert age > timedelta(days=365 * 5), f"expected git-log-derived age, got {age}"
+
+
+def test_lifecycle_audit_forbidden_pattern_grep(tmp_path: Path) -> None:
+    """Phase 8-D: every forbidden pattern in FORBIDDEN_ACTIVE_PATTERNS must
+    actually fire when its target string is present in active code. This
+    catches regex regressions where a pattern could be silently broken."""
+    from ai_ops.audit.lifecycle import (
+        FORBIDDEN_ACTIVE_PATTERNS,
+        _scan_pattern_in_paths,
+    )
+
+    # Realistic offending lines for each forbidden pattern.
+    forbidden_examples: dict[str, str] = {
+        r"--no-verify": 'subprocess.run(["git", "commit", "--no-verify"])',
+        r"\brm\s+-rf\b": 'os.system("rm -rf /tmp/x")',
+        r"gh\s+repo\s+create[^|;\n]*--public": (
+            'os.system("gh repo create some-repo --public")'
+        ),
+        r"#\s*silent[\s_-]*install": "# silent install: skip user prompt",
+    }
+
+    (tmp_path / "ai_ops").mkdir()
+
+    for desc, pattern, scan_paths in FORBIDDEN_ACTIVE_PATTERNS:
+        line = forbidden_examples.get(pattern)
+        assert line is not None, f"add an example for pattern: {pattern!r} ({desc})"
+        offender = tmp_path / "ai_ops" / "offender.py"
+        offender.write_text(line + "\n", encoding="utf-8")
+        hits = _scan_pattern_in_paths(tmp_path, pattern, scan_paths)
+        assert hits, f"pattern {pattern!r} ({desc}) failed to detect: {line!r}"
+        offender.unlink()
 
 
 def test_lifecycle_audit_scorecard_skips_when_missing(tmp_path: Path) -> None:

@@ -96,6 +96,9 @@
           pkgs = pkgsFor system;
         in
         {
+          # `nix run github:owner/ai-ops` (no args) prints --help via the
+          # argparse dispatcher in cli.py; the empty `args` placeholder is
+          # intentional, not a missing default.
           default = app pkgs "ai-ops" "";
           ai-ops = app pkgs "ai-ops" "";
           check = app pkgs "ai-ops-check" "check";

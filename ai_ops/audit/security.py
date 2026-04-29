@@ -9,6 +9,8 @@ from pathlib import Path
 SKIP_DIRS = {".git", ".direnv", ".pytest_cache", "__pycache__", "result"}
 # tests/ 配下を一律 skip すると、gitleaks fallback 時に test fixture を装った
 # 実 secret を見逃す。fixture が必要なら tests/fixtures/ に隔離する規約に絞る。
+# Lowercase only — `tests/Fixtures/` 等の大文字混在は意図的に skip しない
+# (POSIX 慣習に揃えてもらう方が、case-insensitive にしてカテゴリを増やすより安全)。
 VALUE_SCAN_FIXTURE_PARTS = ("tests", "fixtures")
 SECRET_NAME_PATTERNS = (
     re.compile(r"(^|/)\.env(\..*)?$"),

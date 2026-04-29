@@ -95,16 +95,34 @@ def test_run_standard_audit_unresolved_ref(tmp_path: Path) -> None:
 
 
 def test_manifest_sha_used_when_present(tmp_path: Path) -> None:
-    """When --since is omitted but project has .ai-ops/harness.toml, that sha is used."""
-    head = _seed_ai_ops_like_repo(tmp_path)
+    """When --since is omitted, harness.toml's sha must be used for the diff.
+
+    Pin manifest to the *initial* commit and add a later ADR on top so HEAD
+    and HEAD~N do not equal `initial`. Only manifest-derived since_ref can
+    yield since_ref==initial — which also detects the later ADR as new drift.
+    """
+    initial = _seed_ai_ops_like_repo(tmp_path)
+    # Add a second commit so HEAD has moved past `initial`.
+    (tmp_path / "docs" / "decisions" / "0099-later.md").write_text(
+        "# 0099 later\n", encoding="utf-8"
+    )
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "add 0099")
+
     project = tmp_path / "_project"
     project.mkdir()
     (project / ".ai-ops").mkdir()
     (project / ".ai-ops" / "harness.toml").write_text(
-        f'ai_ops_sha = "{head}"\nlast_sync = "2026-04-29T00:00:00+00:00"\n[harness_files]\n',
+        f'ai_ops_sha = "{initial}"\n'
+        'last_sync = "2026-04-29T00:00:00+00:00"\n'
+        "[harness_files]\n",
         encoding="utf-8",
     )
 
     drift = standard.detect_standard_drift(tmp_path, project_root=project)
-    assert drift.since_ref == head
+    # If the manifest were ignored, since_ref would be HEAD or some default —
+    # never equal to the older `initial` once a later commit exists.
+    assert drift.since_ref == initial
     assert drift.resolved_ref is True
+    # And: the second commit's ADR must show up as drift since manifest is pinned.
+    assert any("0099-later.md" in p for p in drift.new_adrs)

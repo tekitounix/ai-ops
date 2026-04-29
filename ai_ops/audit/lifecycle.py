@@ -159,6 +159,32 @@ def _check_scorecard(root: Path) -> tuple[bool, str]:
     return True, "scorecard ran (see JSON in stdout if needed)"
 
 
+def _plan_age(plan: Path, root: Path, now: datetime) -> timedelta:
+    """Age of `plan` from git's last-commit time, falling back to mtime.
+
+    Filesystem mtime is reset on `git clone`, so a plan that is genuinely
+    stale in the repo's history can look "fresh" right after a CI checkout.
+    Prefer `git log -1 --format=%ct` and only fall back to mtime when git
+    has no entry for the file (untracked, or non-git working tree).
+    """
+    try:
+        rel = plan.relative_to(root)
+        result = subprocess.run(
+            ["git", "-C", str(root), "log", "-1", "--format=%ct", "--", str(rel)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            commit_time = datetime.fromtimestamp(int(result.stdout.strip()), tz=timezone.utc)
+            return now - commit_time
+    except (subprocess.SubprocessError, ValueError, OSError):
+        pass
+    mtime = datetime.fromtimestamp(plan.stat().st_mtime, tz=timezone.utc)
+    return now - mtime
+
+
 def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
     """Return non-fatal warnings for active execution plans."""
     plan_root = root / "docs" / "plans"
@@ -187,10 +213,8 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
         if not _has_progress_checkbox(text):
             warnings.append(f"{rel} missing Progress checkbox")
 
-        mtime = datetime.fromtimestamp(plan.stat().st_mtime, tz=timezone.utc)
-        age = now_utc - mtime
-        if age > timedelta(days=PLAN_STALE_DAYS):
-            warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without file update")
+        if _plan_age(plan, root, now_utc) > timedelta(days=PLAN_STALE_DAYS):
+            warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without update")
     return warnings
 
 
