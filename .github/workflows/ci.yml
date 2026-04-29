@@ -48,7 +48,14 @@ jobs:
         with:
           determinate: false
       - name: drop Determinate-only upstream Nix setting
-        run: sudo perl -0pi -e 's/^build-provenance-tags = .*\n//m' /etc/nix/nix.conf
+        shell: bash
+        run: |
+          sudo perl -0pi -e 's/^\s*build-provenance-tags\b.*\n//mg' /etc/nix/nix.conf
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sudo launchctl kickstart -k system/org.nixos.nix-daemon
+          else
+            sudo systemctl restart nix-daemon.service
+          fi
       - name: nix flake check (schema / cross-system eval)
         run: nix flake check --all-systems --no-build
       - name: nix build checks / current runner
