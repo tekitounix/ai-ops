@@ -34,9 +34,6 @@ jobs:
   nix:
     name: nix / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: false
+      - name: drop Determinate-only upstream Nix setting
+        run: sudo perl -0pi -e 's/^build-provenance-tags = .*\n//m' /etc/nix/nix.conf
       - name: nix flake check (schema / cross-system eval)
         run: nix flake check --all-systems --no-build
       - name: nix build checks / current runner
