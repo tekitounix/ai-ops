@@ -85,6 +85,7 @@ def draft_project_brief(spec: ProjectSpec) -> str:
 - AI must not edit: user environment files
 - Required checks before reporting done: ai-ops check
 - Destructive operations policy: Propose -> Confirm -> Execute
+- Language strategy (code / docs / public-facing): English by default; record project-specific exceptions
 
 ## 8. Initial Files
 
@@ -95,6 +96,7 @@ def draft_project_brief(spec: ProjectSpec) -> str:
 - Nix level: {spec.nix_level} (= 'auto' のとき AI が rubric で決定、ADR 0005 amended 2026-04-29)
 - Nix なし justification: (Nix level: none を選ぶ場合のみ必須、Stage A exit or score < 0 の理由)
 - Rubric output (JSON): {{"stage_a_exit": null, "stack_hint": "...", "recommended_level": "...", "score": 0, "confidence": "..."}}
+- Lockfile cadence: T1/T2 GitHub projects should prefer renovate; otherwise update-flake-lock fallback
 
 ## 9. Execution Plan
 

@@ -150,6 +150,31 @@ def test_new_prompt_embeds_brief_template_and_nix_rubric(
     assert "## 8. Initial Files" in out
 
 
+def test_new_draft_brief_matches_current_template_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["new", "demo", "--purpose", "x", "--agent", "prompt-only", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "Language strategy (code / docs / public-facing)" in out
+    assert "Lockfile cadence" in out
+
+
+def test_migration_discovery_does_not_treat_envrc_as_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / ".envrc").write_text("use flake\n", encoding="utf-8")
+    (source / ".env").write_text("API_TOKEN=placeholder-value\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["migrate", str(source), "--dry-run", "--agent", "prompt-only"]) == 0
+    out = capsys.readouterr().out
+    assert "secret_looking_names: .env" in out
+    assert "secret_looking_names: .envrc" not in out
+    assert "placeholder-value" not in out
+
+
 def test_migrate_retrofit_nix_narrows_scope_in_prompt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

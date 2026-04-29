@@ -48,6 +48,24 @@ def _is_docs_only(top_names: list[str]) -> bool:
     return True
 
 
+def _is_secret_looking_name(name: str) -> bool:
+    """Return True for secret-like filenames without treating .envrc as secret.
+
+    `.envrc` is a direnv control file in the documented Nix workflow, while
+    `.env` / `.env.*` are environment-value files and should remain flagged.
+    """
+    lower = name.lower()
+    if lower == ".env" or lower.startswith(".env."):
+        return True
+    if "secret" in lower or "token" in lower:
+        return True
+    return (
+        lower.endswith((".key", ".pem"))
+        or ".key." in lower
+        or ".pem." in lower
+    )
+
+
 def discovery(source: Path) -> str:
     """Read-only discovery + rubric inputs (ADR 0005 amendment 2026-04-29)."""
     lines: list[str] = []
@@ -70,7 +88,7 @@ def discovery(source: Path) -> str:
     secret_names = [
         path.name
         for path in source.iterdir()
-        if any(marker in path.name.lower() for marker in ("secret", "token", ".env", ".key", ".pem"))
+        if _is_secret_looking_name(path.name)
     ]
     lines.append("secret_looking_names: " + (", ".join(secret_names) if secret_names else "none"))
 

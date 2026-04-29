@@ -32,3 +32,15 @@ def test_package_root_ignores_invalid_env_var(
     # editable / source-tree fallback, which for this checkout is the repo
     # root. Just check we did not accept tmp_path.
     assert package_root() != tmp_path
+
+
+def test_package_root_prefers_source_tree_over_stale_bundled_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Running from a checkout should read live AGENTS.md/templates, not stale
+    ignored ai_ops/_resources left behind by a previous wheel build."""
+    monkeypatch.delenv("AI_OPS_PACKAGE_ROOT", raising=False)
+    repo = Path(__file__).resolve().parents[1]
+    assert (repo / "AGENTS.md").is_file()
+    assert (repo / "templates").is_dir()
+    assert package_root() == repo

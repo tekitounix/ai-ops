@@ -18,14 +18,15 @@ def package_root() -> Path:
     Resolution order:
     1. $AI_OPS_PACKAGE_ROOT  (set by `nix run` so the flake's source tree
        reaches paths.py without changing $PWD).
-    2. ai_ops/_resources/    (wheel install: bundled by setup.py at build time).
-    3. ai_ops/../            (editable install or running from source clone).
+    2. ai_ops/../            (editable install or running from source clone).
+    3. ai_ops/_resources/    (wheel install: bundled by setup.py at build time).
 
-    Falling back to (3) is what makes `pip install -e .` and `python -m ai_ops`
-    from a clone work. (2) is what makes `pip install ai-ops` (non-editable)
-    work, since AGENTS.md and templates/ live outside the ai_ops package
-    source in the repo and would not otherwise reach the wheel. (1) handles
-    `nix run` without hijacking the user's cwd.
+    Checking the source-tree parent before bundled resources keeps local
+    development honest even when ignored build artifacts from a previous wheel
+    build are present. Bundled resources still make `pip install ai-ops`
+    (non-editable) self-contained because site-packages has no repo-root
+    AGENTS.md / templates/. (1) handles `nix run` without hijacking the user's
+    cwd.
     """
     env = os.environ.get("AI_OPS_PACKAGE_ROOT")
     if env:
@@ -33,10 +34,13 @@ def package_root() -> Path:
         if (envp / "AGENTS.md").is_file() and (envp / "templates").is_dir():
             return envp
     here = Path(__file__).resolve().parent
+    source_root = here.parent
+    if (source_root / "AGENTS.md").is_file() and (source_root / "templates").is_dir():
+        return source_root
     bundled = here / "_resources"
     if (bundled / "AGENTS.md").is_file() and (bundled / "templates").is_dir():
         return bundled
-    return here.parent
+    return source_root
 
 
 def template_path(*parts: str, root: Path | None = None) -> Path:
