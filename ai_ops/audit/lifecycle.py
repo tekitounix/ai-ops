@@ -17,6 +17,8 @@ REQUIRED_FILES = (
     "templates/artifacts/flake.nix.python",
     "templates/artifacts/flake.nix.xmake",
     "templates/artifacts/.envrc",
+    "templates/artifacts/renovate.json",
+    "templates/artifacts/update-flake-lock.yml",
     "pyproject.toml",
     ".github/workflows/ci.yml",
     "ai_ops/cli.py",
@@ -114,6 +116,8 @@ def run_lifecycle_audit(root: Path) -> int:
         root / "templates" / "artifacts" / "flake.nix.python",
         root / "templates" / "artifacts" / "flake.nix.xmake",
         root / "templates" / "artifacts" / ".envrc",
+        root / "templates" / "artifacts" / "renovate.json",
+        root / "templates" / "artifacts" / "update-flake-lock.yml",
     }
     template_root = root / "templates"
     if template_root.exists():

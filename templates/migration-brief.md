@@ -50,6 +50,8 @@
 - Nix level: <auto|none|devshell|apps|full> (default `auto` → rubric で解決)
 - Nix なし justification: (opt-out 時のみ必須、Stage A exit or score < 0 の理由)
 - Rubric output (JSON): {"stage_a_exit": null, "stack_hint": "...", "recommended_level": "...", "score": 0, "confidence": "..."}
+- Lockfile cadence: <renovate|dependabot|update-flake-lock|preserve-existing|none>
+- Existing lockfile tooling: <renovate|dependabot|update-flake-lock|none> (discovery から)
 - Tool-specific settings:
 - Language strategy (code / docs / public-facing):
 

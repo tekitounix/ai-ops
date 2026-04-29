@@ -167,6 +167,13 @@ def test_evaluate_project_score_promotes_to_apps(tmp_path: Path) -> None:
     assert r["recommended_level"] == "apps"
 
 
+def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
+    """Phase 8-A: renovate.json artifact must be in REQUIRED_FILES + allowed_template_files."""
+    from ai_ops.audit.lifecycle import REQUIRED_FILES
+    assert "templates/artifacts/renovate.json" in REQUIRED_FILES
+    assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
+
+
 def test_evaluate_project_tiny_demote_to_none(tmp_path: Path) -> None:
     """Stage C — tiny project (< 5 file) AND no signals → score < 0 → demote to none."""
     # _git_init w/ file_count=1 で tracked_count = 1 → tiny_project (-2)

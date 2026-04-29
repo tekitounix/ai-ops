@@ -131,6 +131,14 @@ def discovery(source: Path) -> str:
     vendor_signals = any((source / d).is_dir() for d in ("vendor", "third_party", "tools/sdk"))
     lines.append(f"vendor_signals: {vendor_signals}")
 
+    # Lockfile cadence signals (Phase 8-A): existing dependency drift tooling
+    existing_renovate = (source / "renovate.json").is_file() or (source / ".renovaterc.json").is_file()
+    existing_dependabot = (source / ".github" / "dependabot.yml").is_file()
+    existing_update_flake_lock = (source / ".github" / "workflows" / "update-flake-lock.yml").is_file()
+    lines.append(f"existing_renovate: {existing_renovate}")
+    lines.append(f"existing_dependabot: {existing_dependabot}")
+    lines.append(f"existing_update_flake_lock: {existing_update_flake_lock}")
+
     return "\n".join(lines)
 
 
