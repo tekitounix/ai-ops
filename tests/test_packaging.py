@@ -47,9 +47,10 @@ def test_non_editable_install_bundles_agents_md_and_templates(tmp_path: Path) ->
     )
     assert (bundled / "templates" / "plan.md").is_file()
 
-    env = {**os.environ, "PYTHONPATH": str(target)}
+    env = {**os.environ, "PYTHONPATH": str(target), "PYTHONIOENCODING": "utf-8"}
     # Run from tmp_path (not the repo) so paths.py can't fall back to the
-    # source tree's AGENTS.md / templates/.
+    # source tree's AGENTS.md / templates/. Force UTF-8 in/out so the
+    # Windows runner's cp1252 locale doesn't blow up on AGENTS.md kana.
     result = subprocess.run(
         [
             sys.executable,
@@ -65,6 +66,8 @@ def test_non_editable_install_bundles_agents_md_and_templates(tmp_path: Path) ->
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         cwd=str(tmp_path),
         timeout=30,
