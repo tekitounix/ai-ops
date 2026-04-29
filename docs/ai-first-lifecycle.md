@@ -126,8 +126,11 @@ ai-ops 自身の標準検証:
 
 ```sh
 ai-ops check
-direnv exec . nix flake check --all-systems --no-build
-direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
+direnv exec . sh -c '
+set -e
+nix flake check --all-systems --no-build
+nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
+'
 git diff --check
 ```
 

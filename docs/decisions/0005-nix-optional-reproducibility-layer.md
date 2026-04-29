@@ -76,8 +76,11 @@ Cons (−1〜−5): dormant / scratch / docs-only / throwaway / system-tool only
 python -m ai_ops audit nix              # cwd の flake.nix 妥当性 + rubric output
 python -m ai_ops audit nix --report     # ghq list 全 walk、recommendation table
 python -m ai_ops audit nix --propose <path>  # 単一 project の retrofit Markdown 提案
-direnv exec . nix flake check --all-systems --no-build
-direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
+direnv exec . sh -c '
+set -e
+nix flake check --all-systems --no-build
+nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
+'
 ```
 
 ## Amendment 2026-04-29

@@ -138,8 +138,11 @@ Old pre-Phase-9 plans, legacy scripts, and obsolete templates are not in the act
 ```sh
 python -m ai_ops check                # all-in-one
 python -m ai_ops audit security       # secret scan only
-direnv exec . nix flake check --all-systems --no-build
-direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
+direnv exec . sh -c '
+set -e
+nix flake check --all-systems --no-build
+nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
+'
 ```
 
 Nix is **default-required** as the project-level reproducibility layer (per-project rubric, ADR 0005 amended). `python -m ai_ops check` runs without Nix as a bootstrap fallback, but stack-bearing projects (Node / Python / Rust / Go / xmake / DSL) fail `ai-ops audit nix` until a `flake.nix` is in place or an explicit opt-out justification is recorded in the brief.

@@ -110,8 +110,11 @@ python -m ai_ops migrate --help
 python -m ai_ops check
 python -m ai_ops audit lifecycle
 python -m pytest
-direnv exec . nix flake check --all-systems --no-build
-direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
+direnv exec . sh -c '
+set -e
+nix flake check --all-systems --no-build
+nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
+'
 ```
 
 CI matrix:
