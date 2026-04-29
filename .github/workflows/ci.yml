@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
 jobs:
   python:
     name: python / ${{ matrix.os }}
@@ -32,5 +37,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
-      - uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: false
       - run: nix flake check
