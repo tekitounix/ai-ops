@@ -1,4 +1,6 @@
+import os
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ai_ops.audit.nix import evaluate_project, run_nix_audit
@@ -172,6 +174,24 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     from ai_ops.audit.lifecycle import REQUIRED_FILES
     assert "templates/artifacts/renovate.json" in REQUIRED_FILES
     assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
+    assert "templates/plan.md" in REQUIRED_FILES
+    assert "docs/decisions/0008-plan-persistence.md" in REQUIRED_FILES
+
+
+def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
+    from ai_ops.audit.lifecycle import _check_plan_hygiene
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# Feature\n\n## Progress\n\nNo checkbox yet.\n", encoding="utf-8")
+
+    now = datetime(2026, 4, 29, tzinfo=timezone.utc)
+    old = now - timedelta(days=31)
+    os.utime(plan, (old.timestamp(), old.timestamp()))
+
+    warnings = _check_plan_hygiene(tmp_path, now=now)
+    assert any("missing Progress checkbox" in warning for warning in warnings)
+    assert any("active for >30 days" in warning for warning in warnings)
 
 
 def test_lifecycle_audit_forbidden_pattern_grep(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -12,9 +13,11 @@ REQUIRED_FILES = (
     "docs/ai-first-lifecycle.md",
     "docs/project-addition-and-migration.md",
     "docs/decisions/0007-python-canonical-cli.md",
+    "docs/decisions/0008-plan-persistence.md",
     "templates/project-brief.md",
     "templates/migration-brief.md",
     "templates/agent-handoff.md",
+    "templates/plan.md",
     "templates/artifacts/flake.nix.minimal",
     "templates/artifacts/flake.nix.node",
     "templates/artifacts/flake.nix.python",
@@ -27,6 +30,7 @@ REQUIRED_FILES = (
     "ai_ops/cli.py",
     "ai_ops/lifecycle/project.py",
     "ai_ops/lifecycle/migration.py",
+    "ai_ops/lifecycle/plans.py",
     "ai_ops/bootstrap.py",
 )
 
@@ -42,7 +46,10 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("update", "--help"),
     ("audit", "--help"),
     ("check", "--help"),
+    ("promote-plan", "--help"),
 )
+
+PLAN_STALE_DAYS = 30
 
 # Phase 8-D: forbidden patterns from ADR 0002 / 0003 / 0007 etc.
 # Detected anywhere in active source; presence = honest-claim drift.
@@ -150,9 +157,52 @@ def _check_scorecard(root: Path) -> tuple[bool, str]:
     return True, "scorecard ran (see JSON in stdout if needed)"
 
 
+def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
+    """Return non-fatal warnings for active execution plans."""
+    plan_root = root / "docs" / "plans"
+    if not plan_root.is_dir():
+        return []
+
+    warnings: list[str] = []
+    now_utc = now or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+
+    # `glob("*/plan.md")` is one-level-deep: the documented archive layout
+    # `archive/YYYY-MM-DD-<slug>/plan.md` lives two levels down and is naturally
+    # excluded. The explicit guard below only catches a misplaced
+    # `docs/plans/archive/plan.md` and projects literally slugged "archive".
+    for plan in sorted(plan_root.glob("*/plan.md")):
+        if plan.parent.name == "archive":
+            continue
+        rel = plan.relative_to(root)
+        try:
+            text = plan.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            warnings.append(f"{rel} unreadable ({exc})")
+            continue
+
+        if not _has_progress_checkbox(text):
+            warnings.append(f"{rel} missing Progress checkbox")
+
+        mtime = datetime.fromtimestamp(plan.stat().st_mtime, tz=timezone.utc)
+        age = now_utc - mtime
+        if age > timedelta(days=PLAN_STALE_DAYS):
+            warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without file update")
+    return warnings
+
+
+def _has_progress_checkbox(text: str) -> bool:
+    match = re.search(r"(?ms)^## Progress\s*(.*?)(?=^## |\Z)", text)
+    if not match:
+        return False
+    return bool(re.search(r"(?m)^\s*-\s*\[[ xX]\]", match.group(1)))
+
+
 def run_lifecycle_audit(root: Path) -> int:
     fail = 0
     passed = 0
+    warn = 0
     print("==> ai-ops lifecycle audit")
     for rel in REQUIRED_FILES:
         if (root / rel).is_file():
@@ -231,6 +281,7 @@ def run_lifecycle_audit(root: Path) -> int:
         root / "templates" / "project-brief.md",
         root / "templates" / "migration-brief.md",
         root / "templates" / "agent-handoff.md",
+        root / "templates" / "plan.md",
         root / "templates" / "artifacts" / "flake.nix.minimal",
         root / "templates" / "artifacts" / "flake.nix.node",
         root / "templates" / "artifacts" / "flake.nix.python",
@@ -254,6 +305,17 @@ def run_lifecycle_audit(root: Path) -> int:
             fail += 1
     else:
         print("  OK: README-claimed subcommands respond to --help")
+        passed += 1
+
+    # Phase 9: active execution plans are allowed, but stale or malformed plans
+    # should be visible without deleting useful archeology.
+    plan_warnings = _check_plan_hygiene(root)
+    if plan_warnings:
+        for msg in plan_warnings:
+            print(f"  WARN: plan hygiene — {msg}")
+            warn += 1
+    else:
+        print("  OK: active execution plans are absent or healthy")
         passed += 1
 
     # Phase 8-D: ADR forbidden-pattern grep
@@ -281,5 +343,6 @@ def run_lifecycle_audit(root: Path) -> int:
 
     print("==> Summary")
     print(f"  PASS: {passed}")
+    print(f"  WARN: {warn}")
     print(f"  FAIL: {fail}")
     return 1 if fail else 0

@@ -64,6 +64,7 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops audit harness [--path PATH]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes) |
 | `ai-ops audit standard --since REF` | Detect ADR (docs/decisions/) changes since a reference for propagation |
 | `ai-ops check` | All audits + pytest |
+| `ai-ops promote-plan <slug> [--source PATH]` | Promote a user-selected local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
 
 Each command reads `templates/` from this repo, embeds `AGENTS.md` as the operating rules, and either prints the prompt or invokes a configured AI agent.
 
@@ -102,6 +103,7 @@ This repo is not a *silent* installer. It does not modify user shells, global gi
 
 - **Lifecycle (8-step)**: Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt. See [docs/ai-first-lifecycle.md](docs/ai-first-lifecycle.md).
 - **Brief**: 11-section structured proposal the AI fills before execution. See [templates/](templates/).
+- **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
 - **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
 - **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
@@ -116,11 +118,12 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
-  decisions/   ADR 0001-0007
-templates/     project-brief / migration-brief / agent-handoff
+  decisions/   ADR 0001-0008
+  plans/       active execution plans + archive
+templates/     project-brief / migration-brief / agent-handoff / plan
 ```
 
-History, old plans, legacy scripts, and obsolete templates are not in the active tree. Refer to or restore them from Git history when needed.
+Old pre-Phase-9 plans, legacy scripts, and obsolete templates are not in the active tree. Refer to or restore them from Git history when needed.
 
 ## Verification
 

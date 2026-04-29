@@ -15,6 +15,7 @@ from ai_ops.bootstrap import run_install, run_update
 from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
+from ai_ops.lifecycle.plans import run_promote_plan
 from ai_ops.lifecycle.project import build_project_prompt, draft_project_brief
 from ai_ops.models import MigrationSpec, ProjectSpec
 from ai_ops.paths import package_root
@@ -139,6 +140,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     update.add_argument("--dry-run", action="store_true")
     update.set_defaults(handler=handle_update)
+
+    promote = sub.add_parser(
+        "promote-plan",
+        help="Promote a user-selected local AI plan into docs/plans/<slug>/plan.md",
+    )
+    promote.add_argument("slug")
+    promote.add_argument(
+        "--source",
+        type=Path,
+        help="Local AI plan to read (default: ~/.claude/plans/<slug>.md)",
+    )
+    promote.add_argument("--dry-run", action="store_true")
+    promote.set_defaults(handler=handle_promote_plan)
     return parser
 
 
@@ -245,6 +259,15 @@ def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
 
 def handle_update(args: argparse.Namespace, _root: Path) -> int:
     return run_update(tier_max=args.tier, dry_run=args.dry_run)
+
+
+def handle_promote_plan(args: argparse.Namespace, root: Path) -> int:
+    return run_promote_plan(
+        root=root,
+        slug=args.slug,
+        source=args.source,
+        dry_run=args.dry_run,
+    )
 
 
 def resolve_agent(root: Path, override: str | None):

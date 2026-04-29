@@ -1,6 +1,6 @@
 # ADR 0007: Python canonical CLI
 
-> Status: Accepted
+> Status: Accepted (Amended 2026-04-29)
 > Date: 2026-04-27
 
 ## Context
@@ -28,6 +28,7 @@ ai_ops/
   lifecycle/
     project.py
     migration.py
+    plans.py
     prompts.py
   audit/
     lifecycle.py
@@ -42,8 +43,11 @@ User-facing command surface:
 ```sh
 ai-ops new <name> --purpose "<one-line-purpose>"
 ai-ops migrate <path>
-ai-ops audit {lifecycle,nix,security}
+ai-ops bootstrap
+ai-ops update
+ai-ops audit {lifecycle,nix,security,harness,standard}
 ai-ops check
+ai-ops promote-plan <slug> [--source PATH] [--dry-run]
 ```
 
 `new` / `migrate` の共通オプション:

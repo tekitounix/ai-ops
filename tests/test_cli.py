@@ -117,3 +117,74 @@ def test_migrate_prompt_embeds_agents_md_rules(tmp_path: Path, monkeypatch: pyte
     out = capsys.readouterr().out
     assert "Operating rules (from ai-ops AGENTS.md" in out
     assert "ghq" in out
+
+
+def test_promote_plan_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "local-plan.md"
+    source.write_text("# Local Plan\n\nDo the work.\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["promote-plan", "feature", "--source", str(source), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "docs/plans/feature/plan.md" in out
+    assert "dry run: no files written" in out
+    assert not (tmp_path / "docs" / "plans" / "feature" / "plan.md").exists()
+
+
+def test_promote_plan_requires_confirmation_before_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "local-plan.md"
+    source.write_text("# Local Plan\n\nDo the work.\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "promote feature")
+
+    assert main(["promote-plan", "feature", "--source", str(source)]) == 0
+    target = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    assert target.is_file()
+    text = target.read_text(encoding="utf-8")
+    assert "# Local Plan" in text
+    assert "## Progress" in text
+    assert "- [ ]" in text
+
+
+def test_promote_plan_rejects_path_traversal_slug(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "local-plan.md"
+    source.write_text("# Local Plan\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["promote-plan", "../etc/passwd", "--source", str(source)]) == 2
+    assert not (tmp_path / "etc").exists()
+
+
+def test_promote_plan_rejects_missing_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    missing = tmp_path / "does-not-exist.md"
+    assert main(["promote-plan", "feature", "--source", str(missing)]) == 1
+    out = capsys.readouterr().out
+    assert "source plan not found" in out
+
+
+def test_promote_plan_refuses_to_overwrite_existing_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "local-plan.md"
+    source.write_text("# Local Plan\n", encoding="utf-8")
+    target = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# Existing\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["promote-plan", "feature", "--source", str(source)]) == 1
+    out = capsys.readouterr().out
+    assert "target plan already exists" in out
+    assert target.read_text(encoding="utf-8") == "# Existing\n"
+
+
+def test_promote_plan_aborts_when_confirmation_does_not_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "local-plan.md"
+    source.write_text("# Local Plan\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+
+    assert main(["promote-plan", "feature", "--source", str(source)]) == 1
+    out = capsys.readouterr().out
+    assert "Aborted" in out
+    assert not (tmp_path / "docs" / "plans" / "feature" / "plan.md").exists()

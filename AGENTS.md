@@ -26,6 +26,10 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Canonical workflow: `docs/ai-first-lifecycle.md`.
 - Detailed guide: `docs/project-addition-and-migration.md`.
 
+## Plans
+
+Use `docs/plans/<slug>/plan.md` for non-trivial execution-time plans that need handoff, multi-session continuity, or cross-agent review. Start from `templates/plan.md`, keep `Progress` / `Surprises & Discoveries` / `Decision Log` / `Outcomes & Retrospective` current, and archive completed plans under `docs/plans/archive/YYYY-MM-DD-<slug>/`. Do not store transient task state in `AGENTS.md`, and do not treat `~/.claude/plans/` or other user-local AI tool storage as canonical.
+
 `ai-ops` is the Python CLI: installed console script, `python -m ai_ops`, or `nix run github:<owner>/ai-ops -- ...`.
 
 Subcommands:
@@ -35,7 +39,7 @@ Subcommands:
 - `ai-ops migrate <path> --retrofit-nix` — narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
 - `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model).
 - `ai-ops update` — survey present tools and update them with user confirmation.
-- `ai-ops audit lifecycle` — self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + optional OpenSSF Scorecard).
+- `ai-ops audit lifecycle` — self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
 - `ai-ops audit nix` — current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
 - `ai-ops audit nix --report` — walk `ghq list -p` and print fleet-wide Nix gap table.
 - `ai-ops audit nix --propose <path>` — emit Markdown retrofit proposal for one project.
@@ -43,6 +47,7 @@ Subcommands:
 - `ai-ops audit standard --since REF [--path PATH]` — detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
 - `ai-ops audit security` — secret scan (works in any cwd).
 - `ai-ops check` — all audits + pytest.
+- `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` — read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.
 
 `migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
 

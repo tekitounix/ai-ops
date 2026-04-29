@@ -55,12 +55,20 @@ Python 3.11+ 必須。runtime 依存ゼロ (stdlib のみ)。
 |---|---|
 | `ai-ops new <name> --purpose "..."` | 新規 project の prompt + Brief draft 組立 |
 | `ai-ops migrate <path>` | 既存 project の read-only discovery + Brief |
-| `ai-ops audit {lifecycle,nix,security}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 project で動作) |
+| `ai-ops migrate <path> --retrofit-nix` | 既管理 project に `flake.nix` + `.envrc` を追加する narrow scope |
+| `ai-ops bootstrap` | 必須 tool (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) の存在確認と user 承認後 install |
+| `ai-ops update` | 既存 tool の survey と user 承認後 update |
+| `ai-ops audit {lifecycle,nix,security,harness,standard}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd で動作) |
+| `ai-ops audit nix --report` | `ghq list -p` を歩いて fleet 全体の Nix gap table を出力 |
+| `ai-ops audit nix --propose <path>` | 1 project 用の Markdown retrofit 提案を出力 |
+| `ai-ops audit harness [--path PATH]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出 |
+| `ai-ops audit standard --since REF` | reference 以降の ADR (docs/decisions/) 変更を検出 (propagation 用) |
 | `ai-ops check` | 全 audit + pytest |
+| `ai-ops promote-plan <slug> [--source PATH]` | user が選んだ local AI plan を確認後に `docs/plans/<slug>/plan.md` へ昇格 |
 
 各コマンドは本 repo の `templates/` を読み、`AGENTS.md` を operating rule として embed し、prompt を出力するか configured agent を invoke する。
 
-`new` / `migrate` のフラグ: `--agent {claude,codex,prompt-only,...}`、`--tier {T1,T2,T3}`、`--nix {none,devshell,apps,full}`、`--output <path>`、`--dry-run`、`--interactive`。
+`new` / `migrate` のフラグ: `--agent {claude,codex,prompt-only,...}`、`--tier {T1,T2,T3}`、`--nix {auto,none,devshell,apps,full}` (default `auto` = AI agent が per-project rubric で機械決定、ADR 0005)、`--output <path>`、`--dry-run`、`--interactive`。`migrate` は加えて `--retrofit-nix` (Nix-only narrow scope) と `--update-harness` (harness drift 修復) を持つ。
 
 ## 設定
 
@@ -84,17 +92,18 @@ CLI flag `--agent <name>` で override。設定ファイル無しでも built-in
 ```text
 AI agent: project-specific な判断、提案、承認後の実行
 User: 公開範囲、機密境界、長期判断の確認
-Python CLI: discovery、prompt assembly、agent invocation、check/audit
-Nix: optional reproducibility layer
+Python CLI: discovery、prompt assembly、agent invocation、check/audit、tool bootstrap
+Nix: default-required reproducibility layer (stack-aware、per-project rubric、ADR 0005 amended)
 Git: 履歴と復元。repo 内 archive は通常不要
 ```
 
-この repo は installer ではない。ユーザーの shell、global git config、OS scheduler、AI tool の user config は自動変更しない。
+この repo は *silent* installer ではない。ユーザーの shell、global git config、OS scheduler、AI tool の user config を確認なしに変更しない。`ai-ops bootstrap` / `ai-ops update` は user 承認 (Operation Model: Propose → Confirm → Execute) を経てから必須 tool を install / upgrade する。
 
 ## 概念
 
 - **Lifecycle (8-step)**: Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt。詳細は [docs/ai-first-lifecycle.md](docs/ai-first-lifecycle.md)。
 - **Brief**: AI が execute 前に埋める 11-section の構造化提案書。[templates/](templates/) 参照。
+- **Execution plan**: 非自明な execution work 用の living plan。`docs/plans/<slug>/plan.md` に置き、[templates/plan.md](templates/plan.md) を起点にする。
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII)。[docs/project-addition-and-migration.md](docs/project-addition-and-migration.md) 参照。
 - **Operation Model**: 破壊的・横断的変更には Propose → Confirm → Execute。[AGENTS.md](AGENTS.md) で定義。
 - **Multi-agent**: parallel session は `claude --worktree` / Codex の built-in worktree を使う。AGENTS.md "Multi-agent" 参照。
@@ -109,11 +118,12 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
-  decisions/   ADR 0001-0007
-templates/     project-brief / migration-brief / agent-handoff
+  decisions/   ADR 0001-0008
+  plans/       active execution plans + archive
+templates/     project-brief / migration-brief / agent-handoff / plan
 ```
 
-履歴・旧計画・旧スクリプト・旧テンプレートは active tree に置かない。必要なら Git history から参照・復元する。
+Phase 9 より前の旧計画・旧スクリプト・旧テンプレートは active tree に置かない。必要なら Git history から参照・復元する。
 
 ## 検証
 
@@ -123,7 +133,7 @@ python -m ai_ops audit security       # secret scan のみ
 direnv exec . nix flake check         # Nix がある場合
 ```
 
-Nix は optional。`python -m ai_ops check` は Nix なしで動作する。
+Nix は **default-required** な project-level reproducibility layer (per-project rubric、ADR 0005 amended)。`python -m ai_ops check` は bootstrap fallback として Nix なしでも動くが、stack を持つ project (Node / Python / Rust / Go / xmake / DSL) は `flake.nix` が無い限り `ai-ops audit nix` が fail する (brief で明示的に opt-out した場合のみ許容)。
 
 ## License
 
