@@ -431,12 +431,20 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
     n_ok = 0
     n_missing = 0
     n_borderline = 0
+    n_error = 0
 
     for p in paths:
-        r = evaluate_project(p)
         name = p.name
         if len(name) > 48:
             name = "…" + name[-47:]
+        try:
+            r = evaluate_project(p)
+        except Exception as exc:
+            # One bad project (corrupted .git, symlink loop, permission denied)
+            # must not abort a fleet survey. Emit an error row and move on.
+            print(f"{name:<50} ERROR: {type(exc).__name__}: {str(exc)[:60]}")
+            n_error += 1
+            continue
         print(
             f"{name:<50} "
             f"{r.get('stack_hint', 'n/a'):<10} "
@@ -455,7 +463,10 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
             n_borderline += 1
 
     print("-" * 110)
-    print(f"summary: ok={n_ok}, missing-flake={n_missing}, borderline={n_borderline}, total={len(paths)}")
+    print(
+        f"summary: ok={n_ok}, missing-flake={n_missing}, "
+        f"borderline={n_borderline}, error={n_error}, total={len(paths)}"
+    )
     return 0
 
 

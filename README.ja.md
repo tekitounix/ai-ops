@@ -56,8 +56,8 @@ Python 3.11+ 必須。runtime 依存ゼロ (stdlib のみ)。
 | `ai-ops new <name> --purpose "..."` | 新規 project の prompt + Brief draft 組立 |
 | `ai-ops migrate <path>` | 既存 project の read-only discovery + Brief |
 | `ai-ops migrate <path> --retrofit-nix` | 既管理 project に `flake.nix` + `.envrc` を追加する narrow scope |
-| `ai-ops bootstrap` | 必須 tool (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) の存在確認と user 承認後 install |
-| `ai-ops update` | 既存 tool の survey と user 承認後 update |
+| `ai-ops bootstrap [--tier {1,2}]` | 必須 tool (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) の存在確認と user 承認後 install。default `--tier 1` (必須のみ) |
+| `ai-ops update [--tier {1,2}]` | 既存 tool の survey と user 承認後 update。default `--tier 2` (必須 + 推奨) |
 | `ai-ops audit {lifecycle,nix,security,harness,standard}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd で動作) |
 | `ai-ops audit nix --report` | `ghq list -p` を歩いて fleet 全体の Nix gap table を出力 |
 | `ai-ops audit nix --propose <path>` | 1 project 用の Markdown retrofit 提案を出力 |

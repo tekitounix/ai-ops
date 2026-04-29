@@ -51,11 +51,12 @@
             name = name;
             runtimeInputs = tools pkgs;
             text = ''
-              root="''${AI_OPS_ROOT:-$PWD}"
-              if [ ! -d "$root/ai_ops" ]; then
-                root="${self}"
-              fi
-              cd "$root"
+              # Pass the flake's source tree to paths.py via env var so that
+              # AGENTS.md and templates/ are reachable from the bundled build,
+              # without altering $PWD. Changing the working directory would
+              # hide the user's actual project from cli.py (target_root =
+              # Path.cwd()) and confuse downstream agents.
+              export AI_OPS_PACKAGE_ROOT="${self}"
               exec python -m ai_ops ${args} "$@"
             '';
           }
@@ -110,8 +111,11 @@
           pkgs = pkgsFor system;
         in
         {
+          # Slow integration tests (e.g. test_packaging.py) shell out to pip,
+          # which is not present inside the Nix sandbox. Run them in CI via
+          # `python -m pytest -m slow` instead.
           python-tests = checkDrv pkgs "ai-ops-python-tests" ''
-            python -m pytest
+            python -m pytest -m "not slow"
           '';
           python-check = checkDrv pkgs "ai-ops-python-check" ''
             python -m ai_ops check

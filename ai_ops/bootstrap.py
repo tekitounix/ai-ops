@@ -50,14 +50,17 @@ def detect_os() -> str:
             release = ""
         if "microsoft" in release or "wsl" in release:
             return OS_WINDOWS_WSL  # = treated as Linux + apt
-        # detect package manager
+        # detect package manager — never silently fall back to apt on a
+        # non-apt system (e.g. Alpine apk, NixOS, void); that would invoke
+        # the wrong installer at execute time. Surface unknown and let the
+        # caller fail loudly.
         if shutil.which("apt-get"):
             return OS_LINUX_APT
         if shutil.which("dnf"):
             return OS_LINUX_DNF
         if shutil.which("pacman"):
             return OS_LINUX_PACMAN
-        return OS_LINUX_APT  # default
+        return OS_UNKNOWN
     return OS_UNKNOWN
 
 

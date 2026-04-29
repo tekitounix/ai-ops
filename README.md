@@ -56,8 +56,8 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops new <name> --purpose "..."` | Assemble prompt + Brief draft for a new project |
 | `ai-ops migrate <path>` | Read-only discovery + Brief for migrating an existing project |
 | `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
-| `ai-ops bootstrap` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation |
-| `ai-ops update` | Survey present tools and update them with user confirmation |
+| `ai-ops bootstrap [--tier {1,2}]` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation. Default `--tier 1` (required only) |
+| `ai-ops update [--tier {1,2}]` | Survey present tools and update them with user confirmation. Default `--tier 2` (required + recommended) |
 | `ai-ops audit {lifecycle,nix,security,harness,standard}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
 | `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
 | `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |

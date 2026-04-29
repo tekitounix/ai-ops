@@ -23,7 +23,7 @@ Stage A — hard gates (early exit):
   - upstream fork (other-org remote, mostly upstream) → none
 
 Stage B — stack-aware default (Stage A 通過時):
-  - xmake.lua / CMakeLists.txt (組込み)              → devshell + flake.nix.xmake
+  - xmake.lua (組込み)                                → devshell + flake.nix.xmake
   - 商用 SDK / vendor binary                          → devshell + overlay (flake.nix.xmake 派生)
   - package.json / pnpm-lock.yaml / bun.lockb         → devshell + flake.nix.node
   - pyproject.toml / uv.lock / requirements.txt       → devshell + flake.nix.python

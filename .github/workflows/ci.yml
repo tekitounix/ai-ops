@@ -20,6 +20,8 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install pytest
       - run: python -m ai_ops check
+      - name: pytest -m slow (integration / pip install)
+        run: python -m pytest -m slow
 
   nix:
     name: nix / ${{ matrix.os }}

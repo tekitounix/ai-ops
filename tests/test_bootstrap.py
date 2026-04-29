@@ -101,3 +101,15 @@ def test_nix_install_uses_determinate_installer() -> None:
         assert "install.determinate.systems" in joined, (
             f"Nix install for {os_kind} must use Determinate installer, got: {joined}"
         )
+
+
+def test_detect_os_returns_unknown_when_no_package_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On a Linux box without apt/dnf/pacman (Alpine, NixOS, void), detect_os
+    must return OS_UNKNOWN — not silently fall back to apt and try `apt-get
+    install` at execute time."""
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(bootstrap.platform, "release", lambda: "6.0.0-generic")
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda _name: None)
+    assert bootstrap.detect_os() == bootstrap.OS_UNKNOWN

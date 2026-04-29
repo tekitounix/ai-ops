@@ -32,9 +32,13 @@ def run_check(root: Path) -> int:
     fail += run_security_audit(root)
 
     if (root / "tests").is_dir() and shutil.which("pytest"):
-        print("==> pytest")
+        print("==> pytest (excluding slow / network / pip-install integration)")
+        # `slow` markers cover integration tests that build a wheel or shell
+        # out to pip — those need a pip-bearing environment and don't fit
+        # inside the Nix sandbox or this in-process check. Run them explicitly
+        # via `python -m pytest -m slow` (e.g. in CI or before a release).
         result = subprocess.run(
-            [sys.executable, "-m", "pytest"],
+            [sys.executable, "-m", "pytest", "-m", "not slow"],
             cwd=str(root),
             check=False,
         )

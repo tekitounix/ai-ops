@@ -234,6 +234,31 @@ def test_lifecycle_audit_readme_claim_verification(tmp_path: Path) -> None:
     assert failures == [], f"README claim verification failed: {failures}"
 
 
+def test_run_nix_report_continues_after_per_project_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """One bad project (corrupted .git, symlink loop, etc.) must not abort
+    the fleet survey. evaluate_project raises → row reported as ERROR, loop
+    continues."""
+    from ai_ops.audit import nix as nix_mod
+
+    good = tmp_path / "good"
+    good.mkdir()
+    bad = tmp_path / "bad"
+    bad.mkdir()
+
+    real_evaluate = nix_mod.evaluate_project
+
+    def flaky_evaluate(path):
+        if path == bad:
+            raise RuntimeError("simulated corruption")
+        return real_evaluate(path)
+
+    monkeypatch.setattr(nix_mod, "evaluate_project", flaky_evaluate)
+    rc = nix_mod.run_nix_report(roots=[good, bad])
+    assert rc == 0  # report still completes; the bad project shows as ERROR
+
+
 def test_evaluate_project_tiny_demote_to_none(tmp_path: Path) -> None:
     """Stage C — tiny project (< 5 file) AND no signals → score < 0 → demote to none."""
     # _git_init w/ file_count=1 で tracked_count = 1 → tiny_project (-2)

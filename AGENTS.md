@@ -37,8 +37,8 @@ Subcommands:
 - `ai-ops new <name> --purpose "..."` — assemble prompt + Brief draft for a new project.
 - `ai-ops migrate <path>` — read-only discovery + Brief for migrating an existing project.
 - `ai-ops migrate <path> --retrofit-nix` — narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
-- `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model).
-- `ai-ops update` — survey present tools and update them with user confirmation.
+- `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model). `--tier` defaults to 1 (required only); pass `--tier 2` to also install recommended tools.
+- `ai-ops update` — survey present tools and update them with user confirmation. `--tier` defaults to 2 (required + recommended).
 - `ai-ops audit lifecycle` — self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
 - `ai-ops audit nix` — current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
 - `ai-ops audit nix --report` — walk `ghq list -p` and print fleet-wide Nix gap table.
@@ -68,7 +68,7 @@ Use Propose -> Confirm -> Execute for:
 - cross-cutting edits
 - project-specific harness overwrite
 
-One proposal requires one confirmation. Batch approval is forbidden. Read-only commands and local tests do not need confirmation.
+One proposal requires one confirmation. Batch approval — combining several distinct operations under a single y/N — is forbidden. Multiple steps inside a single operation may share one confirmation when they are presented together up front (e.g. `ai-ops bootstrap` showing the full list of missing tools before asking once to install them all). Read-only commands and local tests do not need confirmation.
 
 ## Safety
 
