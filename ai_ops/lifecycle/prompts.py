@@ -97,15 +97,26 @@ def migration_prompt(
     nix_level: str,
     evidence: str,
     retrofit_nix: bool = False,
+    update_harness: bool = False,
 ) -> str:
-    scope_directive = (
-        # Retrofit-narrow: 既管理 project に flake.nix のみ追加する scope
-        "**SCOPE: Nix retrofit only.** This project is already ai-ops managed. "
-        "Do NOT change AGENTS.md / brief / harness scope beyond adding flake.nix + .envrc + "
-        "lock. Brief filename suggestion: docs/brief-YYYYMMDD-nix-retrofit.md.\n\n"
-        if retrofit_nix
-        else ""
-    )
+    if update_harness:
+        scope_directive = (
+            "**SCOPE: Harness drift remediation only (Phase 8-B).** This project is already "
+            "ai-ops managed. Use the `Harness drift` evidence below to add missing files, "
+            "update modified ones to current ai-ops standard, and refresh `.ai-ops/harness.toml`. "
+            "Do NOT change project source code, AGENTS.md content beyond ai-ops template "
+            "alignment, or brief structure. Brief filename suggestion: "
+            "docs/brief-YYYYMMDD-harness-update.md.\n\n"
+        )
+    elif retrofit_nix:
+        scope_directive = (
+            # Retrofit-narrow: 既管理 project に flake.nix のみ追加する scope
+            "**SCOPE: Nix retrofit only.** This project is already ai-ops managed. "
+            "Do NOT change AGENTS.md / brief / harness scope beyond adding flake.nix + .envrc + "
+            "lock. Brief filename suggestion: docs/brief-YYYYMMDD-nix-retrofit.md.\n\n"
+        )
+    else:
+        scope_directive = ""
     return f"""You are migrating an existing project with ai-ops as the source of truth.
 
 {scope_directive}This is not a mechanical migration. Use project-specific judgment to decide the ideal

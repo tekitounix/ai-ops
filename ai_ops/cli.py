@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ai_ops.agents.prompt_only import PromptOnlyAgent
 from ai_ops.agents.subprocess import SubprocessAgent
+from ai_ops.audit.harness import run_harness_audit
 from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
 from ai_ops.audit.security import run_security_audit
@@ -69,13 +70,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Narrow scope to Nix retrofit only (existing managed project に flake.nix を追加する)",
     )
+    migrate.add_argument(
+        "--update-harness",
+        action="store_true",
+        help="Narrow scope to harness drift remediation (audit harness の missing/modified を AI が直す)",
+    )
     migrate.set_defaults(handler=handle_migrate)
 
     check = sub.add_parser("check", help="Run ai-ops repository checks")
     check.set_defaults(handler=lambda _args, root: run_check(root))
 
     audit = sub.add_parser("audit", help="Run read-only audits")
-    audit.add_argument("kind", nargs="?", choices=("lifecycle", "nix", "security"), default="lifecycle")
+    audit.add_argument(
+        "kind",
+        nargs="?",
+        choices=("lifecycle", "nix", "security", "harness"),
+        default="lifecycle",
+    )
     audit.add_argument(
         "--report",
         action="store_true",
@@ -86,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="PATH",
         help="Nix only: emit Markdown retrofit proposal for a single project",
+    )
+    audit.add_argument(
+        "--path",
+        type=Path,
+        metavar="PATH",
+        help="Harness only: target project path (default: cwd)",
     )
     audit.set_defaults(handler=handle_audit)
 
@@ -171,7 +188,10 @@ def handle_migrate(args: argparse.Namespace, root: Path) -> int:
     source = Path(source_text).expanduser().resolve()
     spec = MigrationSpec(source=source, tier=args.tier, nix_level=args.nix_level, output=args.output)
     prompt = build_migration_prompt(
-        spec, root=package_root(), retrofit_nix=getattr(args, "retrofit_nix", False)
+        spec,
+        root=package_root(),
+        retrofit_nix=getattr(args, "retrofit_nix", False),
+        update_harness=getattr(args, "update_harness", False),
     )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -200,6 +220,9 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
         return run_nix_audit(root)
     if args.kind == "security":
         return run_security_audit(root)
+    if args.kind == "harness":
+        target = (args.path.resolve() if args.path else root)
+        return run_harness_audit(target, package_root())
     raise AssertionError(args.kind)
 
 

@@ -147,15 +147,33 @@ def build_migration_prompt(
     *,
     root: Path,
     retrofit_nix: bool = False,
+    update_harness: bool = False,
 ) -> str:
     template = load_template(template_path("migration-brief.md", root=root))
     agents_md = (root / "AGENTS.md").read_text(encoding="utf-8")
+
+    evidence = discovery(spec.source)
+    if update_harness:
+        # Append harness drift report so the AI sees concrete diffs to remediate.
+        from ai_ops.audit.harness import detect_drift  # avoid circular import
+        try:
+            drift = detect_drift(spec.source, root)
+            evidence += "\n\n# Harness drift (audit harness):\n"
+            evidence += f"manifest_present: {drift.manifest_present}\n"
+            evidence += f"ai_ops_sha_drift: {drift.ai_ops_sha_drift}\n"
+            evidence += f"missing: {drift.missing}\n"
+            evidence += f"modified: {drift.modified}\n"
+            evidence += f"extra: {drift.extra}\n"
+        except Exception as exc:
+            evidence += f"\n\n# Harness drift evidence unavailable: {exc}\n"
+
     return migration_prompt(
         template=template,
         agents_md=agents_md,
         source=spec.source,
         tier=spec.tier,
         nix_level=spec.nix_level,
-        evidence=discovery(spec.source),
+        evidence=evidence,
         retrofit_nix=retrofit_nix,
+        update_harness=update_harness,
     )
