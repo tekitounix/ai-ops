@@ -23,6 +23,12 @@ ai-ops = "ai_ops.cli:main"
 [tool.setuptools.packages.find]
 include = ["ai_ops*"]
 
+[tool.setuptools.package-data]
+ai_ops = ["_resources/AGENTS.md", "_resources/templates/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "slow: integration tests that build a wheel or run pip; not in default run",
+]

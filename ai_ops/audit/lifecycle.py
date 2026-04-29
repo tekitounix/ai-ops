@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,6 +27,7 @@ REQUIRED_FILES = (
     "templates/artifacts/renovate.json",
     "templates/artifacts/update-flake-lock.yml",
     "pyproject.toml",
+    "setup.py",
     ".github/workflows/ci.yml",
     "ai_ops/cli.py",
     "ai_ops/lifecycle/project.py",
@@ -115,7 +117,7 @@ def _check_readme_claims(root: Path) -> list[str]:
     for argv in README_CLAIMED_SUBCOMMANDS:
         try:
             result = subprocess.run(
-                ["python", "-m", "ai_ops", *argv],
+                [sys.executable, "-m", "ai_ops", *argv],
                 capture_output=True,
                 text=True,
                 check=False,

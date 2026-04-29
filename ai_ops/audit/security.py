@@ -7,7 +7,9 @@ from pathlib import Path
 
 
 SKIP_DIRS = {".git", ".direnv", ".pytest_cache", "__pycache__", "result"}
-VALUE_SCAN_SKIP_DIRS = {"tests"}
+# tests/ 配下を一律 skip すると、gitleaks fallback 時に test fixture を装った
+# 実 secret を見逃す。fixture が必要なら tests/fixtures/ に隔離する規約に絞る。
+VALUE_SCAN_FIXTURE_PARTS = ("tests", "fixtures")
 SECRET_NAME_PATTERNS = (
     re.compile(r"(^|/)\.env(\..*)?$"),
     re.compile(r"(^|/)secrets?(/|$)"),
@@ -39,7 +41,8 @@ def run_security_audit(root: Path) -> int:
 
     for path in files:
         rel = path.relative_to(root).as_posix()
-        if any(part in VALUE_SCAN_SKIP_DIRS for part in path.relative_to(root).parts):
+        rel_parts = path.relative_to(root).parts
+        if rel_parts[: len(VALUE_SCAN_FIXTURE_PARTS)] == VALUE_SCAN_FIXTURE_PARTS:
             continue
         if _contains_secret_value(path):
             print(f"  FAIL: secret-looking value pattern found in: {rel}")

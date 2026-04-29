@@ -50,11 +50,13 @@ Nix flake を default-required reproducibility layer とする。AI agent が pe
 
 | Stack signal | Level | Template |
 |---|---|---|
-| `xmake.lua` / `CMakeLists.txt` | devshell | `flake.nix.xmake` |
+| `xmake.lua` | devshell | `flake.nix.xmake` |
+| `CMakeLists.txt` | devshell | `flake.nix.minimal` (cmake/ninja/clang を tools に追加) |
 | 商用 SDK / vendor binary | devshell + overlay | `flake.nix.xmake` 派生 |
 | `package.json` / `pnpm-lock.yaml` | devshell | `flake.nix.node` |
 | `pyproject.toml` / `uv.lock` | devshell | `flake.nix.python` |
-| `Cargo.toml` / `go.mod` | devshell | `flake.nix.python` 派生 |
+| `Cargo.toml` | devshell | `flake.nix.minimal` (cargo/rustc を tools に追加) |
+| `go.mod` | devshell | `flake.nix.minimal` (go を tools に追加) |
 | DSL (`*.ato` 等) | devshell minimal | `flake.nix.minimal` |
 
 #### Stage C: Score adjustment

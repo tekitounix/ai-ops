@@ -27,8 +27,14 @@ Stage B — stack-aware default (Stage A 通過時):
   - 商用 SDK / vendor binary                          → devshell + overlay (flake.nix.xmake 派生)
   - package.json / pnpm-lock.yaml / bun.lockb         → devshell + flake.nix.node
   - pyproject.toml / uv.lock / requirements.txt       → devshell + flake.nix.python
-  - Cargo.toml / go.mod                               → devshell + flake.nix.python 派生
+  - Cargo.toml                                        → devshell + flake.nix.minimal (cargo/rustc を tools に追加)
+  - go.mod                                            → devshell + flake.nix.minimal (go を tools に追加)
+  - CMakeLists.txt                                    → devshell + flake.nix.minimal (cmake/ninja/clang を tools に追加)
   - DSL (*.ato 等)                                    → devshell minimal + flake.nix.minimal
+
+  注: rust / go / cmake は専用 template が無いため flake.nix.minimal を起点とし、agent が
+  project-specific tool を tools 配列に追加するのが正解。flake.nix.python を流用すると
+  uv/ruff/pytest が混入するため誤り。
 
 Stage C — score adjustment:
   Pros (+1〜+3): toolchain volatility / multi-developer / CI imperative steps /

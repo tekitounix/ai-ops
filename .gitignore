@@ -13,3 +13,4 @@ __pycache__/
 build/
 dist/
 .eggs/
+ai_ops/_resources/

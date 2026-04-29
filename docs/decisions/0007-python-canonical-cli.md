@@ -97,6 +97,10 @@ Negative:
 
 - Python packaging、subprocess の挙動、TOML パースが harness の表面に乗る。
 
+## Packaging note (Amended 2026-04-29)
+
+宣言は `pyproject.toml` が canonical。ただし AGENTS.md / templates/ は repo top-level に置かれており (人間 first)、そのままでは wheel に含まれない。`setup.py` に最小限の `build_py` override を置き、build 時に `ai_ops/_resources/` へコピーして package-data に含める。`paths.py` は `_resources/` が見つかればそれを優先し、無ければ editable / source clone のため parent ディレクトリへ fallback する。`tests/test_packaging.py` で non-editable install の smoke test を回す。
+
 ## Verification
 
 ```sh
