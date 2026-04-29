@@ -104,6 +104,7 @@ Git: 履歴と復元。repo 内 archive は通常不要
 - **Lifecycle (8-step)**: Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt。詳細は [docs/ai-first-lifecycle.md](docs/ai-first-lifecycle.md)。
 - **Brief**: AI が execute 前に埋める 11-section の構造化提案書。[templates/](templates/) 参照。
 - **Execution plan**: 非自明な execution work 用の living plan。`docs/plans/<slug>/plan.md` に置き、[templates/plan.md](templates/plan.md) を起点にする。
+- **Self-operation**: ai-ops 自身の dogfood、release gate、file hygiene、drift review の運用。[docs/self-operation.md](docs/self-operation.md) 参照。
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII)。[docs/project-addition-and-migration.md](docs/project-addition-and-migration.md) 参照。
 - **Operation Model**: 破壊的・横断的変更には Propose → Confirm → Execute。[AGENTS.md](AGENTS.md) で定義。
 - **Multi-agent**: parallel session は `claude --worktree` / Codex の built-in worktree を使う。AGENTS.md "Multi-agent" 参照。
@@ -118,6 +119,7 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
+  self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive
 templates/     project-brief / migration-brief / agent-handoff / plan

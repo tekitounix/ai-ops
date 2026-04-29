@@ -104,6 +104,7 @@ This repo is not a *silent* installer. It does not modify user shells, global gi
 - **Lifecycle (8-step)**: Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt. See [docs/ai-first-lifecycle.md](docs/ai-first-lifecycle.md).
 - **Brief**: 11-section structured proposal the AI fills before execution. See [templates/](templates/).
 - **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
+- **Self-operation**: how ai-ops dogfoods its own lifecycle, release gate, file hygiene, and drift review. See [docs/self-operation.md](docs/self-operation.md).
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
 - **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
 - **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
@@ -118,6 +119,7 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
+  self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive
 templates/     project-brief / migration-brief / agent-handoff / plan

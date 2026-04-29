@@ -1,4 +1,4 @@
-# AGENTS.md — ai-ops
+# AGENTS.md - ai-ops
 
 This repo is the cross-project AI operations source of truth. Keep it small. If a detail is recoverable from Git history, code, or command output, do not duplicate it here.
 
@@ -10,7 +10,7 @@ This repo is the cross-project AI operations source of truth. Keep it small. If 
 - External projects: `~/ghq/<host>/<org>/<repo>/`.
 - Scratch work: `~/scratch/`, not a Git repo.
 - Do not create repos under Desktop, Documents, or ad-hoc work directories.
-- Cross-repo references in committed docs use URLs (`https://github.com/<owner>/<repo>/...`)。`~/ghq/...` は local working layout の説明にのみ使い、コミット済 doc 内の他 repo 参照には使わない。
+- Cross-repo references in committed docs use URLs (`https://github.com/<owner>/<repo>/...`). Use `~/ghq/...` only when explaining the local working layout; do not use local paths for committed references to other repositories.
 
 ## Lifecycle
 
@@ -25,6 +25,7 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Handoff brief: `templates/agent-handoff.md`.
 - Canonical workflow: `docs/ai-first-lifecycle.md`.
 - Detailed guide: `docs/project-addition-and-migration.md`.
+- Self-operation: `docs/self-operation.md`.
 
 ## Plans
 
@@ -34,26 +35,26 @@ Use `docs/plans/<slug>/plan.md` for non-trivial execution-time plans that need h
 
 Subcommands:
 
-- `ai-ops new <name> --purpose "..."` — assemble prompt + Brief draft for a new project.
-- `ai-ops migrate <path>` — read-only discovery + Brief for migrating an existing project.
-- `ai-ops migrate <path> --retrofit-nix` — narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
-- `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model). `--tier` defaults to 1 (required only); pass `--tier 2` to also install recommended tools.
-- `ai-ops update` — survey present tools and update them with user confirmation. `--tier` defaults to 2 (required + recommended).
-- `ai-ops audit lifecycle` — self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
-- `ai-ops audit nix` — current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
-- `ai-ops audit nix --report` — walk `ghq list -p` and print fleet-wide Nix gap table.
-- `ai-ops audit nix --propose <path>` — emit Markdown retrofit proposal for one project.
-- `ai-ops audit harness [--path PATH]` — detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`.
-- `ai-ops audit standard --since REF [--path PATH]` — detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
-- `ai-ops audit security` — secret scan (works in any cwd).
-- `ai-ops check` — all audits + pytest.
-- `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` — read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.
+- `ai-ops new <name> --purpose "..."` - assemble prompt + Brief draft for a new project.
+- `ai-ops migrate <path>` - read-only discovery + Brief for migrating an existing project.
+- `ai-ops migrate <path> --retrofit-nix` - narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
+- `ai-ops bootstrap` - survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model). `--tier` defaults to 1 (required only); pass `--tier 2` to also install recommended tools.
+- `ai-ops update` - survey present tools and update them with user confirmation. `--tier` defaults to 2 (required + recommended).
+- `ai-ops audit lifecycle` - self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
+- `ai-ops audit nix` - current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
+- `ai-ops audit nix --report` - walk `ghq list -p` and print fleet-wide Nix gap table.
+- `ai-ops audit nix --propose <path>` - emit Markdown retrofit proposal for one project.
+- `ai-ops audit harness [--path PATH]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`.
+- `ai-ops audit standard --since REF [--path PATH]` - detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
+- `ai-ops audit security` - secret scan (works in any cwd).
+- `ai-ops check` - all audits + pytest.
+- `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` - read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.
 
 `migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
 
 `new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
 
-Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers — but it does propose installs via `bootstrap` / `update`.
+Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers, but it does propose installs via `bootstrap` / `update`.
 
 When already running inside an AI agent, do not call another AI via `ai-ops --agent claude` or `ai-ops --agent codex`. Use docs directly, or use `--agent prompt-only` / `--dry-run` for prompt and discovery output only.
 
@@ -68,7 +69,7 @@ Use Propose -> Confirm -> Execute for:
 - cross-cutting edits
 - project-specific harness overwrite
 
-One proposal requires one confirmation. Batch approval — combining several distinct operations under a single y/N — is forbidden. Multiple steps inside a single operation may share one confirmation when they are presented together up front (e.g. `ai-ops bootstrap` showing the full list of missing tools before asking once to install them all). Read-only commands and local tests do not need confirmation.
+One proposal requires one confirmation. Batch approval, meaning several distinct operations under a single y/N, is forbidden. Multiple steps inside a single operation may share one confirmation when they are presented together up front (e.g. `ai-ops bootstrap` showing the full list of missing tools before asking once to install them all). Read-only commands and local tests do not need confirmation.
 
 ## Safety
 
@@ -85,23 +86,23 @@ One proposal requires one confirmation. Batch approval — combining several dis
 
 Default policy:
 
-- Source code (identifiers / comments / tests)、commit messages、branch / tag 名、LICENSE: 英語。
-- README / AGENTS.md / docs/、issues / PRs: 英語が default。日本語 primary を選ぶ場合は project-specific brief で明示する。
+- Source code (identifiers / comments / tests), commit messages, branch / tag names, and LICENSE: English.
+- README / AGENTS.md / docs, issues, and PRs: English by default. If a project chooses Japanese as the primary language, record that choice in its project-specific brief.
 
-T1 (public) repo の場合は **`README.md` を英語にし、`README.<locale>.md` (例: `README.ja.md`) を sibling として併置する** のが業界標準 pattern。GitHub project page で auto-render されるのは `README.md` のみのため、最初の入口を英語にするのが国際 contributor を取り逃さない最低条件。各ファイル冒頭に language selector 1 行を置く。
+For a T1 public repository, use the industry-standard sibling pattern: keep **`README.md` in English** and place localized versions such as `README.ja.md` beside it. GitHub auto-renders only `README.md` on the project page, so the first entrypoint must be English to avoid excluding international contributors. Put a one-line language selector at the top of each README file.
 
-working docs は日本語で運用しつつ、公開 surface (主 README) だけ英語にするのが最小コストで最大効果。AGENTS.md / docs/ / ADR の英語化は、需要が出てから段階的に sibling 併置する。
+Working docs may use Japanese when that is the lowest-cost operating language, while the public surface, especially the primary README, stays English. `AGENTS.md` should stay English. Translate docs / ADRs or add localized siblings incrementally when there is clear demand.
 
 ## Multi-agent
 
-複数 AI agent を同 repo で並行運用する場合、各 AI tool の native worktree support を使う:
+When running multiple AI agents in the same repository, use each AI tool's native worktree support:
 
-- Claude Code: `claude --worktree <name>` で `.claude/worktrees/<name>/` に独立 working tree が作られ、退出時に未 commit 変更が無ければ自動 cleanup。
-- Codex: Codex App は worktree built-in。Codex CLI 単独なら `git worktree add ../<repo>.<branch> <branch>` で同等。
+- Claude Code: `claude --worktree <name>` creates an isolated working tree under `.claude/worktrees/<name>/` and cleans it up on exit when no uncommitted changes remain.
+- Codex: Codex App has built-in worktree support. For standalone Codex CLI, use `git worktree add ../<repo>.<branch> <branch>` for equivalent isolation.
 
-実用上限は 2-4 並列。それを超えると orchestration コストが parallelism のメリットを上回る。大規模並行時は integration branch を 1 本立てて段階的に main に取り込む。同一ファイルへの並行 edit は避け、agent ごとに担当ファイルを分離する。
+The practical limit is 2-4 parallel agents. Beyond that, orchestration cost usually outweighs the benefit of parallelism. For large parallel work, create one integration branch and merge into `main` in stages. Avoid parallel edits to the same file; split file ownership by agent.
 
-`ai-ops` の各コマンドは worktree compatible で、実行 cwd を root として扱う。worktree 内から `ai-ops new` / `migrate` / `audit` / `check` をそのまま使える。
+Every `ai-ops` command is worktree-compatible and treats the current working directory as the project root. You can run `ai-ops new` / `migrate` / `audit` / `check` directly from a worktree.
 
 ## Checks
 
@@ -120,6 +121,7 @@ direnv exec . nix flake check
 
 ## See Also
 
-- `README.md` — first entrypoint
-- `docs/ai-first-lifecycle.md` — canonical workflow
-- `docs/decisions/` — load-bearing ADRs only
+- `README.md` - first entrypoint
+- `docs/ai-first-lifecycle.md` - canonical workflow
+- `docs/self-operation.md` - ai-ops dogfood / release gate
+- `docs/decisions/` - load-bearing ADRs only

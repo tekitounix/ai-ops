@@ -7,6 +7,10 @@ AGENTS.local.md
 .pytest_cache/
 __pycache__/
 *.pyc
+.coverage
+htmlcov/
+result
+result-*
 
 # Python build / install artifacts
 *.egg-info/
