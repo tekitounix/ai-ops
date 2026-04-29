@@ -25,6 +25,7 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Handoff brief: `templates/agent-handoff.md`.
 - Canonical workflow: `docs/ai-first-lifecycle.md`.
 - Detailed guide: `docs/project-addition-and-migration.md`.
+- Realignment (already-running, drifted projects): `docs/realignment.md`.
 - Self-operation: `docs/self-operation.md`.
 
 ## Plans
@@ -123,5 +124,6 @@ direnv exec . nix flake check
 
 - `README.md` - first entrypoint
 - `docs/ai-first-lifecycle.md` - canonical workflow
+- `docs/realignment.md` - drift correction prompt for already-running projects
 - `docs/self-operation.md` - ai-ops dogfood / release gate
 - `docs/decisions/` - load-bearing ADRs only

@@ -28,7 +28,11 @@ github.com/tekitounix/ai-ops に従って、<project-name> を「<one-line-purpo
 github.com/tekitounix/ai-ops に従って、<source-path> を移行してください。
 ```
 
-agent はこの repo を読み、環境を discovery し (`git config --get ghq.user`、OS 等)、11-section の Brief を起草、target の形 (name、`~/ghq/...` への配置、tier、stack、check コマンド) を提案、確認を待ってからファイル作成 / 移行を実行する。
+```text
+https://github.com/tekitounix/ai-ops/blob/main/docs/realignment.md に従って、このプロジェクトを矯正してください。
+```
+
+agent はこの repo を読み、環境を discovery し (`git config --get ghq.user`、OS 等)、11-section の Brief を起草、target の形 (name、`~/ghq/...` への配置、tier、stack、check コマンド) を提案、確認を待ってからファイル作成 / 移行を実行する。矯正用 prompt は「既に存在するが理想からずれてしまった」project 向けで、agent が read-only で観察し、可逆性で 3 段 (P0 doc-only / P1 structural / P2 behavioral) に分けた Realignment Brief を出し、scope ごとの個別承認を待ってから編集する。
 
 すでに AI session 内で作業している場合、その AI は `--agent claude` / `--agent codex` で別 AI を入れ子に呼ばない。必要なら `--agent prompt-only` または `--dry-run` で prompt / brief / discovery 出力だけを使う。
 
@@ -105,6 +109,7 @@ Git: 履歴と復元。repo 内 archive は通常不要
 - **Brief**: AI が execute 前に埋める 11-section の構造化提案書。[templates/](templates/) 参照。
 - **Execution plan**: 非自明な execution work 用の living plan。`docs/plans/<slug>/plan.md` に置き、[templates/plan.md](templates/plan.md) を起点にする。
 - **Self-operation**: ai-ops 自身の dogfood、release gate、file hygiene、drift review の運用。[docs/self-operation.md](docs/self-operation.md) 参照。
+- **Realignment**: 既に運用しているが理想からずれた project を ai-ops モデルに戻す手順。read-only Discovery -> Realignment Brief -> scope 単位の Execute on confirmation。[docs/realignment.md](docs/realignment.md) 参照。
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII)。[docs/project-addition-and-migration.md](docs/project-addition-and-migration.md) 参照。
 - **Operation Model**: 破壊的・横断的変更には Propose → Confirm → Execute。[AGENTS.md](AGENTS.md) で定義。
 - **Multi-agent**: parallel session は `claude --worktree` / Codex の built-in worktree を使う。AGENTS.md "Multi-agent" 参照。
@@ -119,6 +124,7 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
+  realignment.md
   self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive

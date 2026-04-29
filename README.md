@@ -28,7 +28,11 @@ Per github.com/tekitounix/ai-ops, create <project-name> for "<one-line-purpose>"
 Per github.com/tekitounix/ai-ops, migrate <source-path>.
 ```
 
-The agent reads this repo, discovers your environment (`git config --get ghq.user`, OS, ...), drafts an 11-section Brief, proposes a target shape (name, repo placement under `~/ghq/...`, tier, stack, check command), waits for your confirmation, and only then creates / migrates files.
+```text
+Per https://github.com/tekitounix/ai-ops/blob/main/docs/realignment.md, realign this project.
+```
+
+The agent reads this repo, discovers your environment (`git config --get ghq.user`, OS, ...), drafts an 11-section Brief, proposes a target shape (name, repo placement under `~/ghq/...`, tier, stack, check command), waits for your confirmation, and only then creates / migrates files. The realignment prompt is for projects that already exist but have drifted from their operational ideal — the agent inspects the project read-only, emits a Realignment Brief grouped by reversibility (P0 doc-only / P1 structural / P2 behavioral), and waits for per-scope confirmation before editing.
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
 
@@ -105,6 +109,7 @@ This repo is not a *silent* installer. It does not modify user shells, global gi
 - **Brief**: 11-section structured proposal the AI fills before execution. See [templates/](templates/).
 - **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
 - **Self-operation**: how ai-ops dogfoods its own lifecycle, release gate, file hygiene, and drift review. See [docs/self-operation.md](docs/self-operation.md).
+- **Realignment**: how an already-running project that has drifted from its operational ideal is brought back. Read-only Discovery -> Realignment Brief -> per-scope Execute on confirmation. See [docs/realignment.md](docs/realignment.md).
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
 - **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
 - **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
@@ -119,6 +124,7 @@ tests/         pytest
 docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
+  realignment.md
   self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive

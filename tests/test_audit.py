@@ -182,6 +182,7 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
     assert "templates/plan.md" in REQUIRED_FILES
     assert "docs/decisions/0008-plan-persistence.md" in REQUIRED_FILES
+    assert "docs/realignment.md" in REQUIRED_FILES
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
