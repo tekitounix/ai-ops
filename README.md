@@ -58,14 +58,16 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
 | `ai-ops bootstrap` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation |
 | `ai-ops update` | Survey present tools and update them with user confirmation |
-| `ai-ops audit {lifecycle,nix,security}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
+| `ai-ops audit {lifecycle,nix,security,harness,standard}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
 | `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
 | `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
+| `ai-ops audit harness [--path PATH]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes) |
+| `ai-ops audit standard --since REF` | Detect ADR (docs/decisions/) changes since a reference for propagation |
 | `ai-ops check` | All audits + pytest |
 
 Each command reads `templates/` from this repo, embeds `AGENTS.md` as the operating rules, and either prints the prompt or invokes a configured AI agent.
 
-`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}`, `--nix {auto,none,devshell,apps,full}` (default `auto` = AI agent decides via per-project rubric, ADR 0005), `--output <path>`, `--dry-run`, `--interactive`. `migrate` also supports `--retrofit-nix`.
+`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}`, `--nix {auto,none,devshell,apps,full}` (default `auto` = AI agent decides via per-project rubric, ADR 0005), `--output <path>`, `--dry-run`, `--interactive`. `migrate` also supports `--retrofit-nix` (Nix-only narrow scope) and `--update-harness` (harness drift remediation, Phase 8-B).
 
 ## Configuration
 

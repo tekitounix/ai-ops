@@ -174,6 +174,40 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
 
 
+def test_lifecycle_audit_forbidden_pattern_grep(tmp_path: Path) -> None:
+    """Phase 8-D: forbidden patterns from ADR are detected when present in active code."""
+    from ai_ops.audit.lifecycle import _scan_pattern_in_paths
+
+    # Make a fake "ai_ops" tree under tmp_path with a forbidden pattern as a literal command.
+    (tmp_path / "ai_ops").mkdir()
+    (tmp_path / "ai_ops" / "bad.py").write_text(
+        'os.system("rm -rf /tmp/x")\n', encoding="utf-8"
+    )
+    hits = _scan_pattern_in_paths(tmp_path, r"\brm\s+-rf\b", ("ai_ops",))
+    assert hits, "forbidden `rm -rf` should be detected"
+
+
+def test_lifecycle_audit_scorecard_skips_when_missing(tmp_path: Path) -> None:
+    """Phase 8-D: Scorecard CLI 不在時は WARN にして audit を fail させない。"""
+    from ai_ops.audit.lifecycle import _check_scorecard
+
+    # ai-ops 自身の root を渡しても scorecard CLI が無いなら ran=False で skip する
+    ran, msg = _check_scorecard(tmp_path)
+    # CI 環境次第で True/False どちらもあり得るが、msg が必ず非空であること
+    assert isinstance(ran, bool)
+    assert isinstance(msg, str) and len(msg) > 0
+
+
+def test_lifecycle_audit_readme_claim_verification(tmp_path: Path) -> None:
+    """Phase 8-D: README claim 検証は実 ai-ops repo 上では PASS する想定。"""
+    from ai_ops.audit.lifecycle import _check_readme_claims
+
+    # Use the real ai-ops repo root for this end-to-end claim check.
+    repo = Path(__file__).resolve().parents[1]
+    failures = _check_readme_claims(repo)
+    assert failures == [], f"README claim verification failed: {failures}"
+
+
 def test_evaluate_project_tiny_demote_to_none(tmp_path: Path) -> None:
     """Stage C — tiny project (< 5 file) AND no signals → score < 0 → demote to none."""
     # _git_init w/ file_count=1 で tracked_count = 1 → tiny_project (-2)

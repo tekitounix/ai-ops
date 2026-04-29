@@ -35,12 +35,16 @@ Subcommands:
 - `ai-ops migrate <path> --retrofit-nix` — narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
 - `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model).
 - `ai-ops update` — survey present tools and update them with user confirmation.
-- `ai-ops audit lifecycle` — self-audit for ai-ops itself.
+- `ai-ops audit lifecycle` — self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + optional OpenSSF Scorecard).
 - `ai-ops audit nix` — current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
 - `ai-ops audit nix --report` — walk `ghq list -p` and print fleet-wide Nix gap table.
 - `ai-ops audit nix --propose <path>` — emit Markdown retrofit proposal for one project.
+- `ai-ops audit harness [--path PATH]` — detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`.
+- `ai-ops audit standard --since REF [--path PATH]` — detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
 - `ai-ops audit security` — secret scan (works in any cwd).
 - `ai-ops check` — all audits + pytest.
+
+`migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
 
 `new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
 
