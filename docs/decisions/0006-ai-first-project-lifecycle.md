@@ -65,7 +65,8 @@ Negative:
 python -m ai_ops check
 python -m ai_ops audit lifecycle
 python -m ai_ops new brief-smoke --purpose "brief validation smoke" --dry-run
-direnv exec . nix flake check
+direnv exec . nix flake check --all-systems --no-build
+direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
 ```
 
 実プロジェクト validation は対象ごとの proposal と Git history に残す。

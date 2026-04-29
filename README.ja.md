@@ -138,7 +138,8 @@ Phase 9 より前の旧計画・旧スクリプト・旧テンプレートは ac
 ```sh
 python -m ai_ops check                # 全部
 python -m ai_ops audit security       # secret scan のみ
-direnv exec . nix flake check         # Nix がある場合
+direnv exec . nix flake check --all-systems --no-build
+direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
 ```
 
 Nix は **default-required** な project-level reproducibility layer (per-project rubric、ADR 0005 amended)。`python -m ai_ops check` は bootstrap fallback として Nix なしでも動くが、stack を持つ project (Node / Python / Rust / Go / xmake / DSL) は `flake.nix` が無い限り `ai-ops audit nix` が fail する (brief で明示的に opt-out した場合のみ許容)。

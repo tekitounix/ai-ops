@@ -22,7 +22,8 @@ ai-ops を「完成 / release-ready」と言う前に、次を確認する。
 git status --short --branch
 python -m ai_ops check
 git diff --check
-direnv exec . nix flake check
+direnv exec . nix flake check --all-systems --no-build
+direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
 ```
 
 加えて、GitHub 上の latest `main` CI が同じ commit で success していることを確認する。CI がまだ走っていない、または remote と local の `HEAD` が違う場合は release-ready と言わない。

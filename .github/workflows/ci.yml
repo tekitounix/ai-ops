@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: init.defaultBranch
@@ -31,13 +34,21 @@ jobs:
   nix:
     name: nix / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            system: x86_64-linux
+          - os: macos-latest
+            system: aarch64-darwin
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: false
-      - run: nix flake check
+      - name: nix flake check (schema / cross-system eval)
+        run: nix flake check --all-systems --no-build
+      - name: nix build checks / current runner
+        run: nix build --no-link ".#checks.${{ matrix.system }}.all"

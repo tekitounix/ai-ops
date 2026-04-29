@@ -117,7 +117,8 @@ git diff --check
 When Nix is available:
 
 ```sh
-direnv exec . nix flake check
+direnv exec . nix flake check --all-systems --no-build
+direnv exec . sh -c 'nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"'
 ```
 
 ## See Also

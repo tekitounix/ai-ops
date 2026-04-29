@@ -8,7 +8,6 @@
     let
       systems = [
         "aarch64-darwin"
-        "x86_64-darwin"
         "aarch64-linux"
         "x86_64-linux"
       ];
@@ -16,11 +15,9 @@
       pkgsFor = system: import nixpkgs { inherit system; };
       pythonFor =
         pkgs:
-        pkgs.python311.withPackages (
-          ps: [
-            ps.pytest
-          ]
-        );
+        pkgs.python311.withPackages (ps: [
+          ps.pytest
+        ]);
       tools =
         pkgs:
         [
@@ -79,6 +76,40 @@
             ${command}
             touch "$out"
           '';
+      checksFor =
+        pkgs:
+        let
+          individual = {
+            # Slow integration tests (e.g. test_packaging.py) shell out to pip,
+            # which is not present inside the Nix sandbox. Run them in CI via
+            # `python -m pytest -m slow` instead.
+            python-tests = checkDrv pkgs "ai-ops-python-tests" ''
+              python -m pytest -m "not slow"
+            '';
+            python-check = checkDrv pkgs "ai-ops-python-check" ''
+              python -m ai_ops check
+            '';
+            lifecycle = checkDrv pkgs "ai-ops-lifecycle" ''
+              python -m ai_ops audit lifecycle
+            '';
+            nix-audit = checkDrv pkgs "ai-ops-nix-audit" ''
+              python -m ai_ops audit nix
+            '';
+            security = checkDrv pkgs "ai-ops-security" ''
+              python -m ai_ops audit security
+            '';
+            ci = checkDrv pkgs "ai-ops-ci" ''
+              actionlint .github/workflows/ci.yml
+            '';
+          };
+        in
+        individual
+        // {
+          all = pkgs.runCommand "ai-ops-all-checks" { } ''
+            ${nixpkgs.lib.concatStringsSep "\n" (map (drv: "test -e ${drv}") (builtins.attrValues individual))}
+            touch "$out"
+          '';
+        };
     in
     {
       devShells = forAllSystems (
@@ -111,34 +142,6 @@
         }
       );
 
-      checks = forAllSystems (
-        system:
-        let
-          pkgs = pkgsFor system;
-        in
-        {
-          # Slow integration tests (e.g. test_packaging.py) shell out to pip,
-          # which is not present inside the Nix sandbox. Run them in CI via
-          # `python -m pytest -m slow` instead.
-          python-tests = checkDrv pkgs "ai-ops-python-tests" ''
-            python -m pytest -m "not slow"
-          '';
-          python-check = checkDrv pkgs "ai-ops-python-check" ''
-            python -m ai_ops check
-          '';
-          lifecycle = checkDrv pkgs "ai-ops-lifecycle" ''
-            python -m ai_ops audit lifecycle
-          '';
-          nix-audit = checkDrv pkgs "ai-ops-nix-audit" ''
-            python -m ai_ops audit nix
-          '';
-          security = checkDrv pkgs "ai-ops-security" ''
-            python -m ai_ops audit security
-          '';
-          ci = checkDrv pkgs "ai-ops-ci" ''
-            actionlint .github/workflows/ci.yml
-          '';
-        }
-      );
+      checks = forAllSystems (system: checksFor (pkgsFor system));
     };
 }

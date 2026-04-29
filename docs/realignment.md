@@ -107,7 +107,7 @@ git diff --check
 # ai-ops が install 済みなら
 ai-ops check
 # Nix が available なら
-direnv exec . nix flake check
+direnv exec . nix flake check --all-systems --no-build
 ```
 
 `ai-ops check` が無いプロジェクトでは、当該プロジェクトの canonical check command (`AGENTS.md` の Checks に記述されているはず) で代替する。CI が remote と同じ commit で success していることも確認する。
