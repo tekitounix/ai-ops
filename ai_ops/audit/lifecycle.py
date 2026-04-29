@@ -147,8 +147,8 @@ def _check_readme_claims(root: Path) -> list[str]:
 def _check_scorecard(root: Path) -> tuple[bool, str]:
     """Optional OpenSSF Scorecard check.
 
-    Returns (ran, message). `ran=False` if scorecard CLI is unavailable
-    (in which case we skip silently with a warn instead of failing).
+    Returns (ran, message). `ran=False` if scorecard CLI is unavailable;
+    absence is informational because Scorecard is an optional local probe.
     """
     if not shutil.which("scorecard"):
         return False, "scorecard CLI not installed (skip; install via `brew install scorecard` to enable)"
@@ -374,7 +374,7 @@ def run_lifecycle_audit(root: Path) -> int:
     if ran:
         print(f"  INFO: {msg}")
     else:
-        print(f"  WARN: {msg}")
+        print(f"  INFO: {msg}")
 
     print("==> Summary")
     print(f"  PASS: {passed}")

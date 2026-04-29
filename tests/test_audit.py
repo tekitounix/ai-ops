@@ -275,7 +275,7 @@ def test_lifecycle_audit_forbidden_pattern_grep(tmp_path: Path) -> None:
 
 
 def test_lifecycle_audit_scorecard_skips_when_missing(tmp_path: Path) -> None:
-    """Phase 8-D: Scorecard CLI 不在時は WARN にして audit を fail させない。"""
+    """Phase 8-D: Scorecard CLI 不在時は INFO にして audit を fail させない。"""
     from ai_ops.audit.lifecycle import _check_scorecard
 
     # ai-ops 自身の root を渡しても scorecard CLI が無いなら ran=False で skip する
