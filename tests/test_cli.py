@@ -129,6 +129,73 @@ def test_migrate_prompt_embeds_agents_md_rules(tmp_path: Path, monkeypatch: pyte
     assert "ghq" in out
 
 
+def test_new_prompt_embeds_brief_template_and_nix_rubric(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """End-to-end content sanity: the prompt assembled for `ai-ops new` must
+    include (a) AGENTS.md operating rules, (b) the NIX_RUBRIC stage table,
+    and (c) the project-brief template's section headers. Without all three
+    an AI agent receives an underspecified prompt."""
+    main(["new", "demo", "--purpose", "x", "--agent", "prompt-only", "--dry-run"])
+    out = capsys.readouterr().out
+    # AGENTS.md operating rules
+    assert "Propose -> Confirm -> Execute" in out
+    # NIX_RUBRIC stage table
+    assert "Stage A — hard gates" in out
+    assert "Stage B — stack-aware default" in out
+    assert "flake.nix.minimal" in out  # Rust/Go fix from a8087a7
+    # project-brief.md section headers
+    assert "## 1. Summary" in out
+    assert "## 4. Repo Placement and Tier" in out
+    assert "## 8. Initial Files" in out
+
+
+def test_migrate_retrofit_nix_narrows_scope_in_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`migrate --retrofit-nix` must include the narrow-scope directive that
+    tells the agent to add only flake.nix + .envrc."""
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "README.md").write_text("existing\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    main(
+        [
+            "migrate",
+            str(source),
+            "--retrofit-nix",
+            "--dry-run",
+            "--agent",
+            "prompt-only",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "SCOPE: Nix retrofit only" in out
+    assert "flake.nix" in out
+
+
+def test_migrate_update_harness_narrows_scope_in_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`migrate --update-harness` directive (Phase 8-B) must appear in prompt."""
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "README.md").write_text("existing\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    main(
+        [
+            "migrate",
+            str(source),
+            "--update-harness",
+            "--dry-run",
+            "--agent",
+            "prompt-only",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "SCOPE: Harness drift remediation" in out
+
+
 def test_promote_plan_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     source = tmp_path / "local-plan.md"
     source.write_text("# Local Plan\n\nDo the work.\n", encoding="utf-8")

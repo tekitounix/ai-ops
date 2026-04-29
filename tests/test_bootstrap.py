@@ -22,12 +22,80 @@ def test_inventory_has_recommended_tier2_tools() -> None:
 
 
 def test_every_tool_has_install_and_update_for_macos_and_linux_apt() -> None:
-    """Every tool must have at least macOS + Linux (apt) install/update commands."""
+    """Every tool must have either an automatic install command or an explicit
+    manual_install_note for macOS and Linux apt — never silently nothing."""
     for tool in bootstrap.TOOLS:
-        assert bootstrap.OS_MACOS in tool.install_via, f"{tool.name} missing macOS install"
-        assert bootstrap.OS_LINUX_APT in tool.install_via, f"{tool.name} missing Linux apt install"
+        for os_kind in (bootstrap.OS_MACOS, bootstrap.OS_LINUX_APT):
+            has_install = os_kind in tool.install_via
+            has_note = os_kind in tool.manual_install_note
+            assert has_install or has_note, (
+                f"{tool.name} on {os_kind}: needs install_via or manual_install_note"
+            )
+        assert bootstrap.OS_MACOS in tool.install_via, (
+            f"{tool.name} missing macOS install (manual on macOS would be unusual)"
+        )
         assert bootstrap.OS_MACOS in tool.update_via, f"{tool.name} missing macOS update"
-        assert bootstrap.OS_LINUX_APT in tool.update_via, f"{tool.name} missing Linux apt update"
+
+
+def test_install_command_shapes() -> None:
+    """install_via commands must start with the expected prefix per OS so
+    detect_os routing maps onto a coherent installer (no `apt-get` slipping
+    into a brew section, etc.)."""
+    expected_prefix: dict[str, list[str]] = {
+        bootstrap.OS_MACOS: ["brew", "install"],
+        bootstrap.OS_LINUX_APT: ["sudo", "apt-get", "install", "-y"],
+        bootstrap.OS_WINDOWS_WSL: ["sudo", "apt-get", "install", "-y"],
+        bootstrap.OS_LINUX_DNF: ["sudo", "dnf", "install", "-y"],
+        bootstrap.OS_LINUX_PACMAN: ["sudo", "pacman", "-S", "--noconfirm"],
+    }
+    # nix uses Determinate installer; some Linux entries route through brew (Linuxbrew).
+    nix_or_brew_exempt = {"nix", "actionlint", "gitleaks"}
+    for tool in bootstrap.TOOLS:
+        if tool.name in nix_or_brew_exempt:
+            continue
+        for os_kind, prefix in expected_prefix.items():
+            cmd = tool.install_via.get(os_kind)
+            if cmd is None:
+                # Acceptable: tool has manual_install_note for this OS.
+                assert os_kind in tool.manual_install_note, (
+                    f"{tool.name} on {os_kind}: neither install nor note"
+                )
+                continue
+            assert cmd[: len(prefix)] == prefix, (
+                f"{tool.name} install for {os_kind} should start with {prefix}, got {cmd}"
+            )
+            assert all(isinstance(p, str) and p for p in cmd), (
+                f"{tool.name} install for {os_kind} has empty / non-string component"
+            )
+
+
+def test_ghq_linux_uses_manual_note_not_apt() -> None:
+    """Regression: ghq is not in Debian/Ubuntu apt repos, so install_via for
+    apt-based OSes must be absent and a manual_install_note must be present."""
+    ghq = next(t for t in bootstrap.TOOLS if t.name == "ghq")
+    for os_kind in (bootstrap.OS_LINUX_APT, bootstrap.OS_WINDOWS_WSL):
+        assert os_kind not in ghq.install_via
+        assert os_kind in ghq.manual_install_note
+        assert "ghq" in ghq.manual_install_note[os_kind].lower()
+
+
+def test_run_install_warns_for_manual_only_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the only missing tier-1 tool needs manual install, run_install
+    must surface the note and return 1, without prompting for confirmation."""
+
+    only_ghq = next(t for t in bootstrap.TOOLS if t.name == "ghq")
+    monkeypatch.setattr(bootstrap, "TOOLS", (only_ghq,))
+    monkeypatch.setattr(bootstrap, "tool_present", lambda _t: False)
+    monkeypatch.setattr(bootstrap, "tool_version", lambda _t: None)
+
+    # `input()` should never be called. Make it raise to enforce that.
+    def _no_input(_prompt):  # type: ignore[no-untyped-def]
+        raise AssertionError("run_install must not prompt when only manual tools remain")
+
+    monkeypatch.setattr("builtins.input", _no_input)
+
+    rc = bootstrap.run_install(tier_max=1, os_override=bootstrap.OS_LINUX_APT)
+    assert rc == 1  # tier-1 manual install required → not satisfied
 
 
 def test_detect_os_returns_known_value() -> None:

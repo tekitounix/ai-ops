@@ -57,6 +57,9 @@
               # hide the user's actual project from cli.py (target_root =
               # Path.cwd()) and confuse downstream agents.
               export AI_OPS_PACKAGE_ROOT="${self}"
+              # PYTHONPATH lets `python -m ai_ops` find the package in the
+              # flake source even though we never `cd` into it.
+              export PYTHONPATH="${self}''${PYTHONPATH:+:$PYTHONPATH}"
               exec python -m ai_ops ${args} "$@"
             '';
           }

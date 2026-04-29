@@ -26,6 +26,11 @@ class Tool:
     install_via: dict[str, list[str]]  # OS -> install command (argv form)
     update_via: dict[str, list[str]]  # OS -> update command (argv form)
     version_arg: tuple[str, ...] = ("--version",)  # version 表示 argv
+    # Some tools are not in distro repos (e.g. ghq on Debian/Ubuntu apt).
+    # manual_install_note maps OS -> human instruction shown when install_via
+    # has no entry for that OS. The bootstrap step then warns and skips
+    # rather than running the wrong package manager.
+    manual_install_note: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 # OS detection — `detect_os()` で得られる文字列と一致
@@ -135,17 +140,31 @@ TOOLS: tuple[Tool, ...] = (
         purpose="repo placement (ai-ops が認識する project = ghq managed)",
         install_via={
             OS_MACOS: _brew("ghq"),
-            OS_LINUX_APT: ["sudo", "apt-get", "install", "-y", "ghq"],
-            OS_WINDOWS_WSL: ["sudo", "apt-get", "install", "-y", "ghq"],
-            OS_LINUX_DNF: _dnf_install("ghq"),
-            OS_LINUX_PACMAN: _pacman_install("ghq"),
+            # Linux 各 distro の公式 repo に ghq は存在しない。Linuxbrew か
+            # `go install github.com/x-motemen/ghq/cmd/ghq@latest` で入れる。
+            # Pacman には AUR 版があるが --noconfirm で AUR helper 前提になるため
+            # ここでは hands-off にして note のみ。
         },
         update_via={
             OS_MACOS: _brew_upgrade("ghq"),
-            OS_LINUX_APT: _apt_upgrade("ghq"),
-            OS_WINDOWS_WSL: _apt_upgrade("ghq"),
-            OS_LINUX_DNF: _dnf_upgrade("ghq"),
-            OS_LINUX_PACMAN: _pacman_upgrade("ghq"),
+        },
+        manual_install_note={
+            OS_LINUX_APT: (
+                "ghq is not in apt repos. Install via Linuxbrew "
+                "(`brew install ghq`) or `go install github.com/x-motemen/ghq/cmd/ghq@latest`."
+            ),
+            OS_WINDOWS_WSL: (
+                "ghq is not in apt repos. Install via Linuxbrew "
+                "(`brew install ghq`) or `go install github.com/x-motemen/ghq/cmd/ghq@latest`."
+            ),
+            OS_LINUX_DNF: (
+                "ghq is not in dnf repos. Install via Linuxbrew or "
+                "`go install github.com/x-motemen/ghq/cmd/ghq@latest`."
+            ),
+            OS_LINUX_PACMAN: (
+                "ghq is in AUR; use your preferred AUR helper "
+                "(e.g. `yay -S ghq`) or install via Linuxbrew."
+            ),
         },
     ),
     Tool(
@@ -345,9 +364,14 @@ def tool_version(tool: Tool) -> str | None:
         return None
 
 
-def survey(tools: Iterable[Tool] = TOOLS) -> list[tuple[Tool, bool, str | None]]:
-    """Return [(tool, present, version_or_None)] for each tool."""
-    return [(t, tool_present(t), tool_version(t)) for t in tools]
+def survey(tools: Iterable[Tool] | None = None) -> list[tuple[Tool, bool, str | None]]:
+    """Return [(tool, present, version_or_None)] for each tool.
+
+    `tools=None` reads `TOOLS` at call time (not at function-definition time)
+    so test monkeypatching of the module-level inventory takes effect.
+    """
+    iterable = TOOLS if tools is None else tools
+    return [(t, tool_present(t), tool_version(t)) for t in iterable]
 
 
 def print_survey(rows: Sequence[tuple[Tool, bool, str | None]]) -> None:
@@ -391,24 +415,31 @@ def run_install(
         print("\nAll required tools present.")
         return 0
 
-    print(f"\n==> {len(missing)} missing tool(s) to install (tier ≤ {tier_max}, OS={os_kind})")
-    for tool, _, _ in missing:
-        cmd = tool.install_via.get(os_kind)
-        if not cmd:
-            print(f"  WARN: {tool.name} has no install command for {os_kind}")
-            continue
-        print(f"  - {tool.name}: {' '.join(cmd)}")
+    auto_installable = [m for m in missing if m[0].install_via.get(os_kind)]
+    manual_only = [m for m in missing if not m[0].install_via.get(os_kind)]
 
-    if not _confirm("\nProceed to install above tools?", dry_run=dry_run):
+    print(f"\n==> {len(missing)} missing tool(s) (tier ≤ {tier_max}, OS={os_kind})")
+    for tool, _, _ in auto_installable:
+        cmd = tool.install_via[os_kind]
+        print(f"  - {tool.name}: {' '.join(cmd)}")
+    for tool, _, _ in manual_only:
+        note = tool.manual_install_note.get(os_kind, "no install command available")
+        print(f"  - {tool.name}: MANUAL — {note}")
+
+    manual_tier1_present = any(t.tier == 1 for t, _, _ in manual_only)
+
+    if not auto_installable:
+        if manual_only:
+            print("\nNo tools can be auto-installed; resolve the manual entries above.")
+        return 1 if manual_tier1_present else 0
+
+    if not _confirm("\nProceed to install the auto-installable tools above?", dry_run=dry_run):
         print("Skipped (no install performed).")
         return 1 if any(t.tier == 1 for t, _, _ in missing) else 0
 
     failed = 0
-    for tool, _, _ in missing:
-        cmd = tool.install_via.get(os_kind)
-        if not cmd:
-            failed += 1
-            continue
+    for tool, _, _ in auto_installable:
+        cmd = tool.install_via[os_kind]
         print(f"\n==> Installing {tool.name} ...")
         try:
             subprocess.run(cmd, check=True)
@@ -419,10 +450,13 @@ def run_install(
             print(f"  FAIL: {tool.name} (command not found: {exc})", file=sys.stderr)
             failed += 1
 
-    if failed:
-        print(f"\n{failed} tool(s) failed to install.")
+    if failed or manual_tier1_present:
+        if failed:
+            print(f"\n{failed} tool(s) failed to install.")
+        if manual_tier1_present:
+            print("Some tier-1 tools require manual install (see notes above).")
         return 1
-    print("\nAll requested tools installed.")
+    print("\nAll auto-installable tools installed.")
     return 0
 
 
