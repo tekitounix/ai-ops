@@ -28,6 +28,24 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 
 `ai-ops` is the Python CLI: installed console script, `python -m ai_ops`, or `nix run github:<owner>/ai-ops -- ...`.
 
+Subcommands:
+
+- `ai-ops new <name> --purpose "..."` — assemble prompt + Brief draft for a new project.
+- `ai-ops migrate <path>` — read-only discovery + Brief for migrating an existing project.
+- `ai-ops migrate <path> --retrofit-nix` — narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
+- `ai-ops bootstrap` — survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model).
+- `ai-ops update` — survey present tools and update them with user confirmation.
+- `ai-ops audit lifecycle` — self-audit for ai-ops itself.
+- `ai-ops audit nix` — current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
+- `ai-ops audit nix --report` — walk `ghq list -p` and print fleet-wide Nix gap table.
+- `ai-ops audit nix --propose <path>` — emit Markdown retrofit proposal for one project.
+- `ai-ops audit security` — secret scan (works in any cwd).
+- `ai-ops check` — all audits + pytest.
+
+`new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
+
+Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers — but it does propose installs via `bootstrap` / `update`.
+
 When already running inside an AI agent, do not call another AI via `ai-ops --agent claude` or `ai-ops --agent codex`. Use docs directly, or use `--agent prompt-only` / `--dry-run` for prompt and discovery output only.
 
 ## Operation Model

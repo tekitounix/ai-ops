@@ -110,15 +110,35 @@ def _is_docs_only(top_names: Iterable[str]) -> bool:
 
 
 def _is_scratch(path: Path) -> bool:
-    """~/scratch/ 配下、no remote、< 5 file → scratch."""
+    """~/scratch/ 配下 AND no remote AND tracked < 5 file → scratch.
+
+    self-review #2 fix: 旧実装は path だけで判定していたが、~/scratch/ に Git remote 付き
+    クローンを置くケースで誤判定する。3 条件 AND に修正。
+    """
     home = Path.home()
     try:
         rel = path.resolve().relative_to(home)
     except ValueError:
         return False
-    if rel.parts and rel.parts[0] in ("scratch", "tmp"):
-        return True
-    return False
+    if not (rel.parts and rel.parts[0] in ("scratch", "tmp")):
+        return False
+    # remote 確認: 設定なしなら ephemeral 候補
+    remote = _git_remote_url(path)
+    if remote:
+        return False
+    # tracked file count
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "ls-files"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        tracked_count = len(result.stdout.strip().splitlines()) if result.stdout.strip() else 0
+    except Exception:
+        tracked_count = 0
+    return tracked_count < 5
 
 
 def _stage_a_exit(path: Path, top_names: list[str]) -> StageAExit | None:
@@ -139,21 +159,26 @@ def _stage_a_exit(path: Path, top_names: list[str]) -> StageAExit | None:
     if _is_scratch(path):
         return StageAExit(reason="scratch", recommended_level="none")
 
-    # upstream fork (remote URL の owner segment が user の ghq path と一致しない場合)
-    # heuristic: github.com/<owner>/<repo> path で <owner> が path 上の owner segment と異なる場合
+    # upstream fork: remote owner が user の ghq.user と一致しない場合
+    # self-review #3 fix: 旧実装は path 上の owner と remote owner を比較していたが、
+    # path layout が ~/ghq/github.com/... 限定だったり、user の secondary account との
+    # 区別ができないため、`git config --get ghq.user` を真の owner として比較する。
     remote = _git_remote_url(path)
-    if "github.com" in remote and "/github.com/" in str(path):
-        # path 上の owner: ~/ghq/github.com/<owner>/<repo>
-        parts = path.resolve().parts
-        try:
-            idx = parts.index("github.com")
-            path_owner = parts[idx + 1]
-        except (ValueError, IndexError):
-            path_owner = ""
-        # remote URL の owner: https://github.com/<owner>/<repo>
-        m = re.search(r"github\.com[:/]([^/]+)/", remote)
+    if remote:
+        m = re.search(r"(?:github\.com|gitlab\.com|bitbucket\.org)[:/]([^/]+)/", remote)
         remote_owner = m.group(1) if m else ""
-        if path_owner and remote_owner and path_owner != remote_owner:
+        try:
+            user_result = subprocess.run(
+                ["git", "config", "--get", "ghq.user"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            ghq_user = user_result.stdout.strip()
+        except Exception:
+            ghq_user = ""
+        if remote_owner and ghq_user and remote_owner.lower() != ghq_user.lower():
             return StageAExit(reason="upstream-fork", recommended_level="none")
 
     return None
@@ -166,25 +191,32 @@ def _stage_a_exit(path: Path, top_names: list[str]) -> StageAExit | None:
 
 _STACK_RULES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
     # (stack_hint, marker filenames, recommended_level, template_variant)
+    # Note: rust / go / cmake は専用 template が無いため `flake.nix.minimal` (= 最少 tool) に
+    # fallback する。AI agent が retrofit 時に project-specific tool (cargo / go / cmake) を
+    # tools 配列に追加するのが正解。`flake.nix.python` を rust/go に流用すると uv/ruff/pytest が
+    # 不要に混入するため誤り (self-review #1 finding)。
     ("xmake", ("xmake.lua",), "devshell", "flake.nix.xmake"),
-    ("cmake", ("CMakeLists.txt",), "devshell", "flake.nix.xmake"),  # 組込み CMakeLists も xmake 派生
+    ("cmake", ("CMakeLists.txt",), "devshell", "flake.nix.minimal"),  # tools = cmake/ninja/clang を AI が追加
     ("node", ("package.json", "pnpm-lock.yaml", "bun.lockb"), "devshell", "flake.nix.node"),
     ("python", ("pyproject.toml", "uv.lock", "requirements.txt", "Pipfile"), "devshell", "flake.nix.python"),
-    ("rust", ("Cargo.toml",), "devshell", "flake.nix.python"),  # rust 派生 (tools 拡張は別途)
-    ("go", ("go.mod",), "devshell", "flake.nix.python"),  # go 派生
+    ("rust", ("Cargo.toml",), "devshell", "flake.nix.minimal"),  # tools = cargo/rustc を AI が追加
+    ("go", ("go.mod",), "devshell", "flake.nix.minimal"),  # tools = go を AI が追加
     ("dsl", (".ato",), "devshell", "flake.nix.minimal"),  # extension match
 )
 
 
 def _stage_b(top_names: list[str]) -> tuple[str, str, str]:
     """Return (stack_hint, recommended_level, template_variant)."""
+    # Case-insensitive marker matching: top_names を lowercase 化、_STACK_RULES の marker
+    # も lowercase で比較する (CMakeLists.txt vs cmakelists.txt 等の差を吸収)。
     lower = [n.lower() for n in top_names]
     for hint, markers, level, template in _STACK_RULES:
         for marker in markers:
-            if marker.startswith("."):
-                if any(name.endswith(marker) for name in lower):
+            marker_lower = marker.lower()
+            if marker_lower.startswith("."):
+                if any(name.endswith(marker_lower) for name in lower):
                     return hint, level, template
-            elif marker in lower:
+            elif marker_lower in lower:
                 return hint, level, template
     return "unknown", "minimal", "flake.nix.minimal"
 

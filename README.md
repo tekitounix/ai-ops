@@ -55,12 +55,17 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 |---|---|
 | `ai-ops new <name> --purpose "..."` | Assemble prompt + Brief draft for a new project |
 | `ai-ops migrate <path>` | Read-only discovery + Brief for migrating an existing project |
+| `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
+| `ai-ops bootstrap` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation |
+| `ai-ops update` | Survey present tools and update them with user confirmation |
 | `ai-ops audit {lifecycle,nix,security}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
+| `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
+| `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
 | `ai-ops check` | All audits + pytest |
 
 Each command reads `templates/` from this repo, embeds `AGENTS.md` as the operating rules, and either prints the prompt or invokes a configured AI agent.
 
-`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}`, `--nix {none,devshell,apps,full}`, `--output <path>`, `--dry-run`, `--interactive`.
+`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}`, `--nix {auto,none,devshell,apps,full}` (default `auto` = AI agent decides via per-project rubric, ADR 0005), `--output <path>`, `--dry-run`, `--interactive`. `migrate` also supports `--retrofit-nix`.
 
 ## Configuration
 
@@ -84,12 +89,12 @@ CLI flag `--agent <name>` overrides config. Built-in defaults work without any c
 ```text
 AI agent: project-specific judgment, proposals, post-approval execution
 User: visibility, secret boundaries, long-term decisions
-Python CLI: discovery, prompt assembly, agent invocation, check / audit
-Nix: optional reproducibility layer
+Python CLI: discovery, prompt assembly, agent invocation, check / audit, tool bootstrap
+Nix: default-required reproducibility layer (stack-aware, per-project rubric, ADR 0005 amended)
 Git: history and recovery; in-repo archive is usually unnecessary
 ```
 
-This repo is not an installer. It does not modify user shells, global git config, OS schedulers, or AI tool user configs.
+This repo is not a *silent* installer. It does not modify user shells, global git config, OS schedulers, or AI tool user configs without confirmation. `ai-ops bootstrap` / `ai-ops update` install or upgrade required tools only after explicit user approval (Operation Model: Propose → Confirm → Execute).
 
 ## Concepts
 
@@ -123,7 +128,7 @@ python -m ai_ops audit security       # secret scan only
 direnv exec . nix flake check         # if Nix available
 ```
 
-Nix is optional. `python -m ai_ops check` works without Nix.
+Nix is **default-required** as the project-level reproducibility layer (per-project rubric, ADR 0005 amended). `python -m ai_ops check` runs without Nix as a bootstrap fallback, but stack-bearing projects (Node / Python / Rust / Go / xmake / DSL) fail `ai-ops audit nix` until a `flake.nix` is in place or an explicit opt-out justification is recorded in the brief.
 
 ## License
 

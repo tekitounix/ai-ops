@@ -92,7 +92,9 @@ def draft_project_brief(spec: ProjectSpec) -> str:
 - README strategy: describe purpose and first milestone
 - check strategy: project-specific command, no false green
 - .gitignore / secret hygiene: ADR 0004 patterns
-- Nix level: {spec.nix_level}
+- Nix level: {spec.nix_level} (= 'auto' のとき AI が rubric で決定、ADR 0005 amended 2026-04-29)
+- Nix なし justification: (Nix level: none を選ぶ場合のみ必須、Stage A exit or score < 0 の理由)
+- Rubric output (JSON): {{"stage_a_exit": null, "stack_hint": "...", "recommended_level": "...", "score": 0, "confidence": "..."}}
 
 ## 9. Execution Plan
 
