@@ -22,6 +22,7 @@ from ai_ops.paths import package_root
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_io()
     parser = build_parser()
     args = parser.parse_args(argv)
     if not hasattr(args, "handler"):
@@ -29,6 +30,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     target_root = Path.cwd().resolve()
     return args.handler(args, target_root)
+
+
+def _ensure_utf8_io() -> None:
+    """Force UTF-8 on stdout/stderr (Windows only).
+
+    AGENTS.md and the NIX_RUBRIC contain Japanese characters that the
+    Windows console codepage (cp1252 / cp932) cannot encode, so any
+    `print(prompt)` would crash with UnicodeEncodeError. POSIX terminals
+    already default to UTF-8, so this is a no-op there.
+    """
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 def build_parser() -> argparse.ArgumentParser:
