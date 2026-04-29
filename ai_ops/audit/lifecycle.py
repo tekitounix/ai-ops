@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -114,15 +115,22 @@ def _check_readme_claims(root: Path) -> list[str]:
     cli_path = root / "ai_ops" / "cli.py"
     if not cli_path.is_file():
         return failures  # nothing to check
+    # Force UTF-8 in both directions so Windows runners (cp1252 / cp932 by
+    # default) don't blow up when argparse renders help text that happens
+    # to contain non-ASCII characters in any subparser, now or later.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     for argv in README_CLAIMED_SUBCOMMANDS:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "ai_ops", *argv],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
                 timeout=10,
                 cwd=str(root),
+                env=env,
             )
         except Exception as exc:
             failures.append(f"{' '.join(argv)}: subprocess failed ({exc})")

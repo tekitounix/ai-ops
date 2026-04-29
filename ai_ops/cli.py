@@ -70,12 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument(
         "--retrofit-nix",
         action="store_true",
-        help="Narrow scope to Nix retrofit only (existing managed project に flake.nix を追加する)",
+        help="Narrow scope to Nix retrofit only (add flake.nix to an already-managed project)",
     )
     migrate.add_argument(
         "--update-harness",
         action="store_true",
-        help="Narrow scope to harness drift remediation (audit harness の missing/modified を AI が直す)",
+        help="Narrow scope to harness drift remediation (restore missing/modified files via audit harness)",
     )
     migrate.set_defaults(handler=handle_migrate)
 
