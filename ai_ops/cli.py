@@ -10,6 +10,7 @@ from ai_ops.audit.harness import run_harness_audit
 from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
 from ai_ops.audit.security import run_security_audit
+from ai_ops.audit.standard import run_standard_audit
 from ai_ops.bootstrap import run_install, run_update
 from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
@@ -84,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "kind",
         nargs="?",
-        choices=("lifecycle", "nix", "security", "harness"),
+        choices=("lifecycle", "nix", "security", "harness", "standard"),
         default="lifecycle",
     )
     audit.add_argument(
@@ -102,7 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--path",
         type=Path,
         metavar="PATH",
-        help="Harness only: target project path (default: cwd)",
+        help="Harness / Standard only: target project path (default: cwd)",
+    )
+    audit.add_argument(
+        "--since",
+        metavar="REF",
+        help="Standard only: ai-ops git ref to compare against (default: project's manifest sha or HEAD~100)",
     )
     audit.set_defaults(handler=handle_audit)
 
@@ -223,6 +229,13 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
     if args.kind == "harness":
         target = (args.path.resolve() if args.path else root)
         return run_harness_audit(target, package_root())
+    if args.kind == "standard":
+        target = (args.path.resolve() if args.path else None)
+        return run_standard_audit(
+            package_root(),
+            project_root=target,
+            since_ref=args.since,
+        )
     raise AssertionError(args.kind)
 
 
