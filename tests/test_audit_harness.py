@@ -108,9 +108,31 @@ def test_run_harness_audit_clean_returns_zero(tmp_path: Path, capsys: pytest.Cap
     assert rc == 0
 
 
-def test_run_harness_audit_drift_returns_one(tmp_path: Path) -> None:
+def test_run_harness_audit_no_manifest_default_is_warn_only(tmp_path: Path) -> None:
+    """Fleet-wide default: a project with harness files but no manifest is
+    untracked, not broken — return 0 + WARN so the audit can run across all
+    ghq projects without flagging every still-pre-adoption repo as failure."""
     (tmp_path / "AGENTS.md").write_text("agents", encoding="utf-8")
-    # No .ai-ops/harness.toml → extras detected
+    rc = harness.run_harness_audit(tmp_path, tmp_path)
+    assert rc == 0
+
+
+def test_run_harness_audit_no_manifest_strict_returns_one(tmp_path: Path) -> None:
+    """`--strict` enforces manifest presence — used in per-repo gates rather
+    than fleet surveys."""
+    (tmp_path / "AGENTS.md").write_text("agents", encoding="utf-8")
+    rc = harness.run_harness_audit(tmp_path, tmp_path, strict=True)
+    assert rc == 1
+
+
+def test_run_harness_audit_with_manifest_drift_returns_one(tmp_path: Path) -> None:
+    """Once a manifest is present, drift is always a failure — strictness
+    only applies to the manifest-absence case."""
+    (tmp_path / "AGENTS.md").write_text("v1", encoding="utf-8")
+    m = harness.build_manifest(tmp_path, tmp_path)
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(m.to_toml(), encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("v2", encoding="utf-8")  # cause drift
     rc = harness.run_harness_audit(tmp_path, tmp_path)
     assert rc == 1
 

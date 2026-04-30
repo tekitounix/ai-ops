@@ -3,6 +3,8 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from ai_ops.audit.nix import evaluate_project, run_nix_audit
 from ai_ops.audit.security import run_security_audit
 
@@ -345,6 +347,32 @@ def test_run_nix_report_continues_after_per_project_error(
     assert rc == 0  # report still completes; the bad project shows as ERROR
 
 
+def test_run_nix_report_marks_managed_projects(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The `mgd` column reflects whether `.ai-ops/harness.toml` is present,
+    so fleet surveys can tell ai-ops-managed projects from validation /
+    pre-adoption repos at a glance."""
+    from ai_ops.audit import nix as nix_mod
+
+    managed = tmp_path / "managed"
+    (managed / ".ai-ops").mkdir(parents=True)
+    (managed / ".ai-ops" / "harness.toml").write_text(
+        'ai_ops_sha = "x"\nlast_sync = "y"\n[harness_files]\n', encoding="utf-8"
+    )
+
+    untracked = tmp_path / "untracked"
+    untracked.mkdir()
+
+    rc = nix_mod.run_nix_report(roots=[managed, untracked])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Header column present
+    assert "mgd" in out
+    # Both rows printed; managed row shows yes, untracked shows no
+    assert "managed=1/2" in out
+
+
 def test_evaluate_project_tiny_demote_to_none(tmp_path: Path) -> None:
     """Stage C — tiny project (< 5 file) AND no signals → score < 0 → demote to none."""
     # _git_init w/ file_count=1 で tracked_count = 1 → tiny_project (-2)
@@ -415,4 +443,31 @@ def test_security_audit_still_flags_secret_named_files_under_tests_dir(tmp_path:
 
 def test_security_audit_skips_binary_files_without_crashing(tmp_path: Path) -> None:
     (tmp_path / "binary.bin").write_bytes(b"\x00\x01\x02\xff\xfe")
+    assert run_security_audit(tmp_path) == 0
+
+
+def test_security_audit_allows_env_template_variants(tmp_path: Path) -> None:
+    """`.env.example` and friends are placeholder templates, not real secrets.
+    Treating them as failures was a documented false-positive source in the
+    fleet review."""
+    for name in (".env.example", ".env.template", ".env.sample", ".env.dist"):
+        (tmp_path / name).write_text("API_KEY=__placeholder__\n", encoding="utf-8")
+    assert run_security_audit(tmp_path) == 0
+
+
+def test_security_audit_still_flags_real_env_file(tmp_path: Path) -> None:
+    """`.env` itself stays flagged even when `.env.example` is allowed."""
+    (tmp_path / ".env.example").write_text("API_KEY=__placeholder__\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("API_KEY=real-token\n", encoding="utf-8")
+    assert run_security_audit(tmp_path) == 1
+
+
+def test_security_audit_skips_value_scan_in_dependency_dirs(tmp_path: Path) -> None:
+    """Value-pattern scanning must skip vendor / build / venv trees: those
+    contain third-party fixtures and AKIA-shaped strings that the project
+    does not own."""
+    for dirname in ("node_modules", ".venv", "vendor", "dist", "build"):
+        d = tmp_path / dirname
+        d.mkdir()
+        (d / "fixture.txt").write_text(_FAKE_AWS_KEY + "\n", encoding="utf-8")
     assert run_security_audit(tmp_path) == 0

@@ -6,12 +6,29 @@ import subprocess
 from pathlib import Path
 
 
-SKIP_DIRS = {".git", ".direnv", ".pytest_cache", "__pycache__", "result"}
+SKIP_DIRS = {
+    # VCS / direnv / Python tool caches
+    ".git", ".direnv", ".pytest_cache", ".tox", ".eggs", "__pycache__",
+    # Python virtual env (path-encoded in pyc files; not source-of-truth)
+    ".venv", "venv",
+    # Node / package managers
+    "node_modules",
+    # Build / dependency vendor trees
+    "vendor", "target", "dist", "build", ".cache", ".next", ".gradle",
+    # Nix / Bazel
+    "result", "bazel-out",
+}
 # tests/ 配下を一律 skip すると、gitleaks fallback 時に test fixture を装った
 # 実 secret を見逃す。fixture が必要なら tests/fixtures/ に隔離する規約に絞る。
 # Lowercase only — `tests/Fixtures/` 等の大文字混在は意図的に skip しない
 # (POSIX 慣習に揃えてもらう方が、case-insensitive にしてカテゴリを増やすより安全)。
 VALUE_SCAN_FIXTURE_PARTS = ("tests", "fixtures")
+# Suffixes after `.env.` that mark a template / placeholder file rather than a
+# real secret store. `.env.example` is universal; `.env.template` / `.sample` /
+# `.dist` / `.default` are common in cookiecutter / Rails / Laravel layouts.
+ENV_TEMPLATE_SUFFIXES = frozenset({
+    "example", "template", "sample", "dist", "default", "tmpl",
+})
 SECRET_NAME_PATTERNS = (
     re.compile(r"(^|/)\.env(\..*)?$"),
     re.compile(r"(^|/)secrets?(/|$)"),
@@ -72,6 +89,12 @@ def _iter_files(root: Path):
 
 
 def _is_secret_name(rel: str) -> bool:
+    name = rel.rsplit("/", 1)[-1]
+    # `.env.example` and friends are explicit templates, not real secrets.
+    if name.startswith(".env."):
+        suffix = name[len(".env."):].lower()
+        if suffix in ENV_TEMPLATE_SUFFIXES:
+            return False
     return any(pattern.search(rel) for pattern in SECRET_NAME_PATTERNS)
 
 

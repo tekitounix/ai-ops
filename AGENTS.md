@@ -48,7 +48,7 @@ Subcommands:
 - `ai-ops audit nix` - current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
 - `ai-ops audit nix --report` - walk `ghq list -p` and print fleet-wide Nix gap table.
 - `ai-ops audit nix --propose <path>` - emit Markdown retrofit proposal for one project.
-- `ai-ops audit harness [--path PATH]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`.
+- `ai-ops audit harness [--path PATH] [--strict]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`. Default returns 0 with a WARN when manifest is absent but harness files exist (fleet visibility); `--strict` flips that to FAIL.
 - `ai-ops audit standard --since REF [--path PATH]` - detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
 - `ai-ops audit security` - secret scan (works in any cwd).
 - `ai-ops check` - all audits + pytest.

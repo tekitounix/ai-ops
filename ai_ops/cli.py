@@ -124,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Harness / Standard only: target project path (default: cwd)",
     )
     audit.add_argument(
+        "--strict",
+        action="store_true",
+        help="Harness only: treat manifest absence (with harness files present) as failure",
+    )
+    audit.add_argument(
         "--since",
         metavar="REF",
         help="Standard only: ai-ops git ref to compare against (default: project's manifest sha or HEAD~100)",
@@ -259,7 +264,11 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
         return run_security_audit(root)
     if args.kind == "harness":
         target = (args.path.resolve() if args.path else root)
-        return run_harness_audit(target, package_root())
+        return run_harness_audit(
+            target,
+            package_root(),
+            strict=getattr(args, "strict", False),
+        )
     if args.kind == "standard":
         target = (args.path.resolve() if args.path else None)
         return run_standard_audit(

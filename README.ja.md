@@ -59,7 +59,7 @@ Python 3.11 以上が必要。実行時依存はゼロ (stdlib のみ)。
 | `ai-ops audit {lifecycle,nix,security,harness,standard}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd で動作) |
 | `ai-ops audit nix --report` | `ghq list -p` を歩いて fleet 全体の Nix gap table を出力 |
 | `ai-ops audit nix --propose <path>` | 1 project 用の Markdown retrofit 提案を出力 |
-| `ai-ops audit harness [--path PATH]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出 |
+| `ai-ops audit harness [--path PATH] [--strict]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出。 default では manifest 不在を non-blocking warning として扱い fleet survey を pre-adoption repo 横断で回せる。 `--strict` で manifest 不在を failure に昇格 |
 | `ai-ops audit standard --since REF` | reference 以降の ADR (docs/decisions/) 変更を検出 (propagation 用) |
 | `ai-ops check` | 全 audit + pytest |
 | `ai-ops promote-plan <slug> [--source PATH]` | ユーザーが選んだ local AI plan を、確認のうえ `docs/plans/<slug>/plan.md` へ昇格 |

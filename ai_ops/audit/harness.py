@@ -184,21 +184,43 @@ def detect_drift(
     )
 
 
-def run_harness_audit(project_root: Path, ai_ops_root: Path) -> int:
-    """Print drift report. Returns 0 if clean / 1 if any drift detected."""
+def run_harness_audit(
+    project_root: Path,
+    ai_ops_root: Path,
+    *,
+    strict: bool = False,
+) -> int:
+    """Print drift report.
+
+    Returns:
+      - 0 when the harness is in sync with its manifest, or when no manifest
+        exists and the project hasn't adopted ai-ops harness files yet.
+      - 0 when no manifest exists but harness files are present, *unless*
+        `strict=True`. The default is "non-blocking visibility": fleet-wide
+        runs over many projects show adoption status without failing every
+        repo that hasn't seeded a manifest yet.
+      - 1 when manifest exists and drift is detected, or when
+        `strict=True` and a manifest is missing despite harness files being
+        present.
+    """
     drift = detect_drift(project_root, ai_ops_root)
     print(f"==> Harness drift audit (Phase 8-B, L3)")
     print(f"  project: {project_root}")
     if not drift.manifest_present:
         if drift.extra:
+            severity = "FAIL" if strict else "WARN"
+            note = "" if strict else " (non-blocking; pass --strict to fail)"
             print(
-                f"  WARN: no .ai-ops/harness.toml; "
-                f"{len(drift.extra)} untracked harness file(s) present "
-                f"(run `ai-ops migrate {project_root} --update-harness` to seed manifest)"
+                f"  {severity}: no .ai-ops/harness.toml; "
+                f"{len(drift.extra)} untracked harness file(s) present"
+                f"{note}"
+            )
+            print(
+                f"    seed with: ai-ops migrate {project_root} --update-harness"
             )
             for rel in drift.extra:
                 print(f"    untracked: {rel}")
-            return 1
+            return 1 if strict else 0
         print("  OK: no manifest, no harness files; project pre-adoption")
         return 0
 

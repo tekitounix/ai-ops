@@ -417,7 +417,13 @@ def _ghq_list_paths() -> list[Path]:
 
 
 def run_nix_report(roots: list[Path] | None = None) -> int:
-    """Walk ghq list -p (or provided roots), emit recommendation table."""
+    """Walk ghq list -p (or provided roots), emit recommendation table.
+
+    The `mgd` column shows whether the project has been onboarded to ai-ops
+    harness tracking (`.ai-ops/harness.toml` present). A fleet survey can
+    then separate ai-ops-managed projects from validation fixtures /
+    untouched repos at a glance.
+    """
     paths = roots or _ghq_list_paths()
     if not paths:
         print("No projects found via ghq list -p")
@@ -425,28 +431,37 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
 
     print("==> Nix fleet survey (rubric, ADR 0005)")
     print(f"  {len(paths)} project(s)\n")
-    print(f"{'project':<50} {'stack':<10} {'cur':<5} {'rec':<10} {'score':>5} {'gap':<15} {'conf':<6}")
-    print("-" * 110)
+    print(
+        f"{'project':<50} {'mgd':<4} {'stack':<10} {'cur':<5} "
+        f"{'rec':<10} {'score':>5} {'gap':<15} {'conf':<6}"
+    )
+    print("-" * 115)
 
     n_ok = 0
     n_missing = 0
     n_borderline = 0
     n_error = 0
+    n_managed = 0
 
     for p in paths:
         name = p.name
         if len(name) > 48:
             name = "…" + name[-47:]
+        managed = (p / ".ai-ops" / "harness.toml").is_file()
+        if managed:
+            n_managed += 1
+        mgd_label = "yes" if managed else "no"
         try:
             r = evaluate_project(p)
         except Exception as exc:
             # One bad project (corrupted .git, symlink loop, permission denied)
             # must not abort a fleet survey. Emit an error row and move on.
-            print(f"{name:<50} ERROR: {type(exc).__name__}: {str(exc)[:60]}")
+            print(f"{name:<50} {mgd_label:<4} ERROR: {type(exc).__name__}: {str(exc)[:55]}")
             n_error += 1
             continue
         print(
             f"{name:<50} "
+            f"{mgd_label:<4} "
             f"{r.get('stack_hint', 'n/a'):<10} "
             f"{r.get('current_nix', '?'):<5} "
             f"{r.get('recommended_level', '?'):<10} "
@@ -462,10 +477,11 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
         if r.get("confidence") == "low":
             n_borderline += 1
 
-    print("-" * 110)
+    print("-" * 115)
     print(
-        f"summary: ok={n_ok}, missing-flake={n_missing}, "
-        f"borderline={n_borderline}, error={n_error}, total={len(paths)}"
+        f"summary: managed={n_managed}/{len(paths)}, ok={n_ok}, "
+        f"missing-flake={n_missing}, borderline={n_borderline}, "
+        f"error={n_error}, total={len(paths)}"
     )
     return 0
 

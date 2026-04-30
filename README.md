@@ -59,7 +59,7 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops audit {lifecycle,nix,security,harness,standard}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
 | `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
 | `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
-| `ai-ops audit harness [--path PATH]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes) |
+| `ai-ops audit harness [--path PATH] [--strict]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes). Default treats manifest absence as a non-blocking warning so fleet surveys can run across pre-adoption repos; `--strict` makes manifest absence a failure |
 | `ai-ops audit standard --since REF` | Detect ADR (docs/decisions/) changes since a reference for propagation |
 | `ai-ops check` | All audits + pytest |
 | `ai-ops promote-plan <slug> [--source PATH]` | Promote a user-selected local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
