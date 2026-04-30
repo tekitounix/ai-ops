@@ -258,7 +258,6 @@ def test_audit_my_fleet_prompt_chain_reaches_fleet_audit_playbook() -> None:
     # Priority taxonomy and sub-flow routing must both be documented;
     # otherwise the agent would have nowhere to derive recommendations.
     assert "P0" in fleet and "P1" in fleet and "P2" in fleet
-    assert "ghq list -p" in fleet
     for sub in ("relocate", "migrate", "realign", "no-op"):
         assert sub in fleet, f"sub-flow `{sub}` missing from fleet-audit playbook"
     # The playbook must explicitly defer destructive work to the linked
@@ -272,6 +271,9 @@ def test_audit_my_fleet_prompt_chain_reaches_fleet_audit_playbook() -> None:
     # Validation / fixture exclusion is what prevents drift counts from
     # being polluted by intentionally unmanaged repos.
     assert "fixture" in fleet.lower()
+    # Phase 1 must call the canonical CLI (ai-ops audit fleet) — agents
+    # must not re-implement the collection in shell from scratch.
+    assert "audit fleet --json" in fleet
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:

@@ -51,6 +51,7 @@ Subcommands:
 - `ai-ops audit nix --propose <path>` - emit Markdown retrofit proposal for one project.
 - `ai-ops audit harness [--path PATH] [--strict]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`. Default returns 0 with a WARN when manifest is absent but harness files exist (fleet visibility); `--strict` flips that to FAIL.
 - `ai-ops audit standard --since REF [--path PATH]` - detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
+- `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` - walk `ghq list -p`, score each project on 8 signals, emit priority-sorted table (or JSON). Exit 1 when any P0/P1 remains; backs the `audit my fleet` Quick start prompt and is safe to run from cron / CI.
 - `ai-ops audit security` - secret scan (works in any cwd).
 - `ai-ops check` - all audits + pytest.
 - `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` - read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.

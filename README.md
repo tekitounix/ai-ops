@@ -62,7 +62,8 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
 | `ai-ops bootstrap [--tier {1,2}]` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation. Default `--tier 1` (required only) |
 | `ai-ops update [--tier {1,2}]` | Survey present tools and update them with user confirmation. Default `--tier 2` (required + recommended) |
-| `ai-ops audit {lifecycle,nix,security,harness,standard}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo) |
+| `ai-ops audit {lifecycle,nix,security,harness,standard,fleet}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo; `fleet` walks all ghq-tracked projects) |
+| `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` | Walk `ghq list -p`, score each project on 8 signals, emit a priority-sorted table (`--json` for machine output). Exit 1 if any P0/P1 remains — usable from cron / CI |
 | `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
 | `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
 | `ai-ops audit harness [--path PATH] [--strict]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes). Default treats manifest absence as a non-blocking warning so fleet surveys can run across pre-adoption repos; `--strict` makes manifest absence a failure |

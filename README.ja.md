@@ -62,7 +62,8 @@ Python 3.11 以上が必要。実行時依存はゼロ (stdlib のみ)。
 | `ai-ops migrate <path> --retrofit-nix` | 既管理 project に `flake.nix` + `.envrc` を追加する narrow scope |
 | `ai-ops bootstrap [--tier {1,2}]` | 必須 tool (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) の存在確認と、ユーザー承認後の install。default `--tier 1` (必須のみ) |
 | `ai-ops update [--tier {1,2}]` | 既存 tool の survey と、ユーザー承認後の update。default `--tier 2` (必須 + 推奨) |
-| `ai-ops audit {lifecycle,nix,security,harness,standard}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd で動作) |
+| `ai-ops audit {lifecycle,nix,security,harness,standard,fleet}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd、`fleet` は ghq 管理下の全 project を walk) |
+| `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` | `ghq list -p` を walk し各 project を 8 signal で採点、 priority-sorted table を出力 (`--json` で機械可読)。 P0/P1 が残れば exit 1 — cron / CI から利用可 |
 | `ai-ops audit nix --report` | `ghq list -p` を歩いて fleet 全体の Nix gap table を出力 |
 | `ai-ops audit nix --propose <path>` | 1 project 用の Markdown retrofit 提案を出力 |
 | `ai-ops audit harness [--path PATH] [--strict]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出。 default では manifest 不在を non-blocking warning として扱い fleet survey を pre-adoption repo 横断で回せる。 `--strict` で manifest 不在を failure に昇格 |

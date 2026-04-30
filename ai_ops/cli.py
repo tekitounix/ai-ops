@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ai_ops.agents.prompt_only import PromptOnlyAgent
 from ai_ops.agents.subprocess import SubprocessAgent
+from ai_ops.audit.fleet import run_fleet_audit
 from ai_ops.audit.harness import run_harness_audit
 from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
@@ -103,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "kind",
         nargs="?",
-        choices=("lifecycle", "nix", "security", "harness", "standard"),
+        choices=("lifecycle", "nix", "security", "harness", "standard", "fleet"),
         default="lifecycle",
     )
     audit.add_argument(
@@ -127,6 +128,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         help="Harness only: treat manifest absence (with harness files present) as failure",
+    )
+    audit.add_argument(
+        "--json",
+        action="store_true",
+        help="Fleet only: emit JSON instead of the text table",
+    )
+    audit.add_argument(
+        "--priority",
+        choices=("P0", "P1", "P2", "all"),
+        default="all",
+        help="Fleet only: filter rows by priority (default: all)",
     )
     audit.add_argument(
         "--since",
@@ -275,6 +287,11 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
             package_root(),
             project_root=target,
             since_ref=args.since,
+        )
+    if args.kind == "fleet":
+        return run_fleet_audit(
+            json_output=getattr(args, "json", False),
+            priority_filter=getattr(args, "priority", "all"),
         )
     raise AssertionError(args.kind)
 

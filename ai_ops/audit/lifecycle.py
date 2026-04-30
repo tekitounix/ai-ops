@@ -38,6 +38,7 @@ REQUIRED_FILES = (
     "ai_ops/lifecycle/project.py",
     "ai_ops/lifecycle/migration.py",
     "ai_ops/lifecycle/plans.py",
+    "ai_ops/audit/fleet.py",
     "ai_ops/bootstrap.py",
 )
 

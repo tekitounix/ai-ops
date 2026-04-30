@@ -19,105 +19,89 @@ Phase 1 Discovery (read-only, all projects)
 
 Each project that requires action gets its own Propose → Confirm → Execute cycle. Batch approval across projects is forbidden by AGENTS.md §Operation Model. Mid-session interruption / resumption is supported because the Brief is the durable state.
 
-## Phase 1 — Discovery (read-only)
+## Phase 1 — Discovery (read-only via the CLI)
 
-For every project from `ghq list -p`, collect a fixed set of signals. The agent's cwd stays at the ai-ops repo (or any read-only safe location); each project is inspected via `git -C <path>` and `find <path>`, never by `cd`-ing in. Secret **values** must not be opened — only filenames are inspected for the `sec` signal.
-
-```sh
-ghq list -p > /tmp/fleet-audit.list
-wc -l < /tmp/fleet-audit.list                                # total tracked projects
-```
-
-For each project path `$P`:
+The agent runs the canonical fleet collector — it does not assemble the table from individual `find` / `git` invocations. The CLI is deterministic, version-controlled, and produces identical output for AI agents and scheduled jobs (cron / CI).
 
 ```sh
-# (a) location drift — should be under ~/ghq/<host>/<owner>/<repo>/
-case "$P" in
-    "$HOME/ghq/"*) loc=ok ;;
-    *)             loc=DRIFT ;;
-esac
+# Machine-readable view for the agent to reason over.
+python -m ai_ops audit fleet --json > /tmp/fleet-audit.json
 
-# (b) managed signal
-[ -f "$P/.ai-ops/harness.toml" ] && mgd=yes || mgd=no
-
-# (c) nix state — flake.nix presence; gap classification reuses
-#     `python -m ai_ops audit nix --report` for the whole fleet at once.
-[ -f "$P/flake.nix" ] && nix=present || nix=missing
-
-# (d) secret-name files — name only, no content read
-sec=$(find "$P" -maxdepth 3 \( -path "$P/.git" -o -path "$P/node_modules" \
-        -o -path "$P/.venv" -o -path "$P/vendor" -o -path "$P/dist" \
-        -o -path "$P/build" \) -prune -o \
-      -type f \( -name ".env" -o -name "*.key" -o -name "*.pem" \
-        -o -name "id_rsa" -o -name "id_ed25519" \) -print 2>/dev/null | wc -l)
-
-# (e) last commit recency
-last=$(git -C "$P" log -1 --format=%ar 2>/dev/null || echo "no commits")
-
-# (f) untracked / dirty count (porcelain lines)
-dirty=$(git -C "$P" status --porcelain 2>/dev/null | wc -l)
-
-# (g) TODO / FIXME / WIP / TBD count — text-source only, summary
-todo=$(rg -c -t md -t py -t js -t ts -t rs -t go --hidden \
-        -g '!.git' -g '!node_modules' -g '!.venv' -g '!vendor' \
-        -e 'TODO|FIXME|WIP|TBD' "$P" 2>/dev/null | \
-        awk -F: '{s+=$2} END{print s+0}')
-
-# (h) AGENTS.md presence
-[ -f "$P/AGENTS.md" ] && agents=yes || agents=no
+# Or, for the user to glance at:
+python -m ai_ops audit fleet
 ```
 
-`audit nix --report` already computes `nix` gaps fleet-wide; the agent should run it once and join its output into the table rather than re-implementing the rubric per project.
+Each row carries the eight signals that drive priority and sub-flow assignment:
 
-This phase emits no writes. The output is a CSV / TSV held in memory and rendered as Phase 2's Markdown table.
+| key | meaning |
+|---|---|
+| `loc` | `ok` if path is under `~/ghq/<host>/<owner>/<repo>/`, else `DRIFT` |
+| `mgd` | `yes` if `.ai-ops/harness.toml` is present, else `no` |
+| `nix` | `present` / `missing` / `n/a` (n/a = docs-only repo) |
+| `sec` | secret-name file count (`.env`, `*.key`, `*.pem`, `id_rsa`, …; `.env.example` etc. excluded) |
+| `dirty` | uncommitted state lines (`git status --porcelain`) |
+| `last_commit_human` | `git log -1 --format=%ar` (e.g. "1 day ago") |
+| `todo` | TODO / FIXME / WIP / TBD count across text sources (rg-based; degrades to 0 if rg absent) |
+| `agents_md` | AGENTS.md present at root |
+
+Plus three derived flags the CLI computes once: `has_stack`, `is_docs_only`, `harness_drift`. Filenames only — secret **values** are never opened (the CLI's `_count_secret_files` is name-based).
+
+### Filter to a single priority during reasoning
+
+```sh
+python -m ai_ops audit fleet --json --priority P0   # immediate-action only
+python -m ai_ops audit fleet --json --priority P1   # planned-action only
+```
+
+### Exit code (for cron / CI)
+
+`ai-ops audit fleet` returns `1` if any P0 or P1 row remains in the (filtered) output, `0` otherwise. A scheduled job that runs the command nightly and sets up an alert on rc=1 surfaces drift the moment it appears.
 
 ## Phase 2 — Fleet Audit Brief
 
-Single Markdown document. Title: "Fleet Audit Brief". Date-stamped. Pinned in chat for the rest of the session.
+The Brief is a Markdown document the agent assembles from the CLI's JSON output. Title: "Fleet Audit Brief". Date-stamped. Pinned in chat for the rest of the session.
 
-### Priority assignment
+### Priority assignment (computed by the CLI)
 
 | Priority | Trigger |
 |---|---|
 | **P0** | `loc=DRIFT` (project lives outside `~/ghq/`) OR `sec≥1` (secret-name file present) |
-| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift detected by `audit harness --strict --path <P>`, OR `last` is older than 18 months on a still-active stack (archive vs. continue decision needed) |
+| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift, OR last commit older than 540 days (~18 months) on a still-active stack |
 | **P2** | observation only: clean managed projects, validation fixtures (`mgd=no` and intentionally so), dirty work in progress, TODO churn |
 
-A project's priority is the highest it qualifies for; it is listed once.
+A project's priority is the highest it qualifies for; the JSON lists each project exactly once.
 
-### Table format
+### Sub-flow assignment (also computed by the CLI)
 
-```text
-| project | path                                     | loc  | mgd | nix     | sec | dirty | last      | todo | pri | sub-flow |
-|---------|------------------------------------------|------|-----|---------|-----|-------|-----------|------|-----|----------|
-| ai-ops  | ~/ghq/github.com/tekitounix/ai-ops       | ok   | yes | present | 0   | 0     | 1 day ago | 12   | P2  | no-op    |
-| <name>  | ~/work/<name>                            | DRIFT| no  | missing | 0   | 3     | 4 days    | 31   | P0  | relocate |
-```
-
-Columns:
-
-- `project` — last segment of path
-- `path` — repo-rel form (`~/ghq/...` or whatever the actual location is)
-- `loc` — `ok` if under `~/ghq/`, `DRIFT` otherwise
-- `mgd` — yes/no, `.ai-ops/harness.toml` presence
-- `nix` — `present` / `missing` / `n/a` (docs-only / archive)
-- `sec` — count of secret-name files (P0 trigger when ≥ 1)
-- `dirty` — count of porcelain lines (uncommitted state, P2 only)
-- `last` — `git log -1 --format=%ar`
-- `todo` — text-source TODO/FIXME/WIP/TBD count (P2 signal)
-- `pri` — P0 / P1 / P2
-- `sub-flow` — recommended next action
-
-### Sub-flow assignment rules
-
-| Condition | Sub-flow |
+| Condition | `sub_flow` |
 |---|---|
 | `loc=DRIFT` | `relocate` → `docs/project-relocation.md` |
-| `loc=ok` AND `mgd=no` AND has source / config (not pure-docs / fixture) | `migrate` → `docs/project-addition-and-migration.md` |
-| `loc=ok` AND `mgd=yes` AND any drift signal (harness drift, missing nix on stack-bearing, accumulated TODOs) | `realign` → `docs/realignment.md` |
-| `loc=ok` AND clean, or `P2` fixture | `no-op` |
+| `loc=ok` AND `mgd=no` AND has stack or non-docs source | `migrate` → `docs/project-addition-and-migration.md` |
+| `loc=ok` AND `mgd=yes` AND drift signal (`nix=missing+has_stack` or `harness_drift`) | `realign` → `docs/realignment.md` |
+| otherwise | `no-op` |
 
-Each project is listed exactly once with exactly one sub-flow recommendation. Validation / fixture repositories are explicitly noted in the Brief and pre-classified as `no-op` unless the user opts them into a sub-flow.
+Validation / fixture repositories (`mgd=no` and intentionally so, often `~/ghq/local/...`) are P2 by default and listed in the Brief as `no-op` unless the user explicitly opts them into a sub-flow.
+
+### Brief structure (what the agent assembles from the JSON)
+
+```markdown
+# Fleet Audit Brief — YYYY-MM-DD
+
+Source: `python -m ai_ops audit fleet --json`
+Total: <N> projects (managed=<X>, P0=<a>, P1=<b>, P2=<c>)
+
+## P0 — immediate action (<a> projects)
+| project | path | loc | sec | sub-flow | reason |
+| ...     | ...  | ... | ... | ...      | ...    |
+
+## P1 — planned action (<b> projects)
+| project | path | nix | harness_drift | last | sub-flow | reason |
+
+## P2 — observation only (<c> projects)
+- short summary, no per-row table needed unless something stands out.
+```
+
+Reason text in the table cites the specific trigger (e.g. "loc=DRIFT (~/work/foo)", "nix=missing + has_stack=true (package.json)", "harness_drift=true (3 modified files)"). The Brief surfaces the exact signal that drove each priority so the user can confirm intent before approving the sub-flow.
 
 ## Phase 3 — Execute (per project, per confirmation)
 
