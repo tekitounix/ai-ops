@@ -29,7 +29,7 @@ Per github.com/tekitounix/ai-ops, migrate <source-path>.
 ```
 
 ```text
-Per https://github.com/tekitounix/ai-ops/blob/main/docs/realignment.md, realign this project.
+Per github.com/tekitounix/ai-ops, realign this project.
 ```
 
 The agent reads this repo, discovers your environment (`git config --get ghq.user`, OS, ...), drafts an 11-section Brief, proposes a target shape (name, repo placement under `~/ghq/...`, tier, stack, check command), waits for your confirmation, and only then creates / migrates files. The realignment prompt is for projects that already exist but have drifted from their operational ideal — the agent inspects the project read-only, emits a Realignment Brief grouped by reversibility (P0 doc-only / P1 structural / P2 behavioral), and waits for per-scope confirmation before editing.
