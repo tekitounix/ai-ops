@@ -1,10 +1,10 @@
-# Fleet Audit (ghq-managed projects)
+# Projects Audit (every ghq-tracked project)
 
 > Scope: enumerate every ghq-tracked project, surface drift signals per project, prioritize by reversibility / urgency, and route each high-priority finding into the appropriate single-project sub-flow (migrate / realign / relocate). Read-only Discovery → priority-sorted Brief → per-project Execute on confirmation.
 
 ## When to use
 
-The Quick start prompt `Per github.com/tekitounix/ai-ops, audit my fleet.` reaches this playbook. The agent reads ai-ops as reference, walks `ghq list -p`, and emits a priority-sorted Fleet Audit Brief.
+The Quick start prompt `Per github.com/tekitounix/ai-ops, audit my projects.` reaches this playbook. The agent reads ai-ops as reference, walks `ghq list -p`, and emits a priority-sorted Audit Brief.
 
 This playbook does **not** modify any project without per-project user confirmation. For greenfield work use the first Quick start prompt; for a single working tree use the second (`align this project`).
 
@@ -21,14 +21,14 @@ Each project that requires action gets its own Propose → Confirm → Execute c
 
 ## Phase 1 — Discovery (read-only via the CLI)
 
-The agent runs the canonical fleet collector — it does not assemble the table from individual `find` / `git` invocations. The CLI is deterministic, version-controlled, and produces identical output for AI agents and scheduled jobs (cron / CI).
+The agent runs the canonical collector — it does not assemble the table from individual `find` / `git` invocations. The CLI is deterministic, version-controlled, and produces identical output for AI agents and scheduled jobs (cron / CI).
 
 ```sh
 # Machine-readable view for the agent to reason over.
-python -m ai_ops audit fleet --json > /tmp/fleet-audit.json
+python -m ai_ops audit projects --json > /tmp/projects-audit.json
 
 # Or, for the user to glance at:
-python -m ai_ops audit fleet
+python -m ai_ops audit projects
 ```
 
 Each row carries the eight signals that drive priority and sub-flow assignment:
@@ -36,7 +36,7 @@ Each row carries the eight signals that drive priority and sub-flow assignment:
 | key | meaning |
 |---|---|
 | `loc` | `ok` if path is under `~/ghq/<host>/<owner>/<repo>/`, else `DRIFT` |
-| `mgd` | `yes` if `.ai-ops/harness.toml` is present, else `no` |
+| `mgd` | `yes` if `.ai-ops/harness.toml` is present, `src` for ai-ops itself, else `no` |
 | `nix` | `present` / `missing` / `n/a` (n/a = docs-only repo) |
 | `sec` | secret-name file count (`.env`, `*.key`, `*.pem`, `id_rsa`, …; `.env.example` etc. excluded) |
 | `dirty` | uncommitted state lines (`git status --porcelain`) |
@@ -49,17 +49,17 @@ Plus three derived flags the CLI computes once: `has_stack`, `is_docs_only`, `ha
 ### Filter to a single priority during reasoning
 
 ```sh
-python -m ai_ops audit fleet --json --priority P0   # immediate-action only
-python -m ai_ops audit fleet --json --priority P1   # planned-action only
+python -m ai_ops audit projects --json --priority P0   # immediate-action only
+python -m ai_ops audit projects --json --priority P1   # planned-action only
 ```
 
 ### Exit code (for cron / CI)
 
-`ai-ops audit fleet` returns `1` if any P0 or P1 row remains in the (filtered) output, `0` otherwise. A scheduled job that runs the command nightly and sets up an alert on rc=1 surfaces drift the moment it appears.
+`ai-ops audit projects` returns `1` if any P0 or P1 row remains in the (filtered) output, `0` otherwise. A scheduled job that runs the command nightly and sets up an alert on rc=1 surfaces drift the moment it appears.
 
-## Phase 2 — Fleet Audit Brief
+## Phase 2 — Audit Brief
 
-The Brief is a Markdown document the agent assembles from the CLI's JSON output. Title: "Fleet Audit Brief". Date-stamped. Pinned in chat for the rest of the session.
+The Brief is a Markdown document the agent assembles from the CLI's JSON output. Title: "Projects Audit Brief". Date-stamped. Pinned in chat for the rest of the session.
 
 ### Priority assignment (computed by the CLI)
 
@@ -85,9 +85,9 @@ Validation / fixture repositories (`mgd=no` and intentionally so, often `~/ghq/l
 ### Brief structure (what the agent assembles from the JSON)
 
 ```markdown
-# Fleet Audit Brief — YYYY-MM-DD
+# Projects Audit Brief — YYYY-MM-DD
 
-Source: `python -m ai_ops audit fleet --json`
+Source: `python -m ai_ops audit projects --json`
 Total: <N> projects (managed=<X>, P0=<a>, P1=<b>, P2=<c>)
 
 ## P0 — immediate action (<a> projects)
@@ -109,7 +109,7 @@ The agent walks the Brief in priority order — every P0 row first, then P1. P2 
 
 1. Propose the sub-flow with the project's path and the specific drift signals that triggered the priority.
 2. Wait for individual user confirmation (`yes` / `defer` / `skip`). The ai-ops Operation Model forbids batch approval; one confirmation buys exactly one project's sub-flow.
-3. On `yes`, follow the linked playbook in full — including its own Phase 1-4. The fleet audit does not skip or abbreviate sub-flow steps.
+3. On `yes`, follow the linked playbook in full — including its own Phase 1-4. This audit does not skip or abbreviate sub-flow steps.
 4. On `defer` / `skip`, record the choice in the Brief so a later session can pick it up.
 
 The Brief is the durable state. If the session is interrupted (context pressure, user step-away, partial action), the Brief shows what is finished, what is deferred, and what is pending — and the next agent invocation resumes from there using the same Quick start prompt.
@@ -125,15 +125,15 @@ After Phase 3 (or any intentional pause), the agent re-runs Phase 1 Discovery fo
 | <name>  | P1         | P1        | partial — see brief |
 ```
 
-The same priority logic that triggered Phase 3 must now resolve to **P2 or below** for the touched project. Anything still at P0 / P1 is recorded as deferred in the Brief, with the reason, and is the entry point for the next fleet audit cycle.
+The same priority logic that triggered Phase 3 must now resolve to **P2 or below** for the touched project. Anything still at P0 / P1 is recorded as deferred in the Brief, with the reason, and is the entry point for the next audit cycle.
 
 ## Constraints
 
 - Phase 1 reads only filenames, git metadata, and text-source patterns. Secret **values** are never opened.
 - Each P0 / P1 project gets its own Propose → Confirm → Execute. Batch approval across multiple projects is forbidden (AGENTS.md §Operation Model).
-- Sub-flow execution defers entirely to the linked playbook. The fleet audit does not duplicate relocation / migration / realignment steps; if a sub-flow's own destructive step requires confirmation (e.g. relocation Step 2's `mv`), that confirmation is presented inside the fleet-audit session.
+- Sub-flow execution defers entirely to the linked playbook. This audit does not duplicate relocation / migration / realignment steps; if a sub-flow's own destructive step requires confirmation (e.g. relocation Step 2's `mv`), that confirmation is presented inside this audit session.
 - Validation / fixture repositories (`mgd=no` and intentionally so, often `~/ghq/local/...`) are P2 by default and excluded from drift counts unless user explicitly opts them in.
-- Phase 4 reuses Phase 1 logic verbatim. No separate "fleet verify" procedure; touched projects must drop to P2 or below.
+- Phase 4 reuses Phase 1 logic verbatim. No separate "verify" procedure; touched projects must drop to P2 or below.
 - The Brief is durable. The agent never advances past a step in Phase 3 without writing the outcome (`done` / `deferred` / `skipped`) into the Brief, so resume after interruption is loss-free.
 
 ## See Also
@@ -143,5 +143,5 @@ The same priority logic that triggered Phase 3 must now resolve to **P2 or below
 - `docs/realignment.md` — single-project realign sub-flow
 - `docs/project-addition-and-migration.md` — single-project migrate sub-flow
 - `docs/project-relocation.md` — single-project relocate sub-flow
-- `ai-ops audit nix --report` — fleet-wide nix-gap subset of this audit
+- `ai-ops audit nix --report` — nix-gap subset across all projects (legacy column-only view)
 - `ai-ops audit harness --path <P> --strict` — per-project harness drift used in P1 classification

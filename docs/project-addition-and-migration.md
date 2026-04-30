@@ -67,7 +67,7 @@ Cons (−1〜−5): dormant / scratch / docs-only / throwaway / system-tool only
 
 Score ≥ +6 で promote、+2〜+5 で keep、0〜+1 で borderline (brief で flag)、< 0 で demote to none (justification 必須)。
 
-`ai-ops audit nix --report` で fleet survey、`ai-ops audit nix --propose <path>` で個別 retrofit 提案。`ai-ops check` は Nix がなくても bootstrap fallback として動くが、stack-bearing project では Nix audit fail = check fail。
+`ai-ops audit nix --report` で全 project の Nix gap 一覧、`ai-ops audit nix --propose <path>` で個別 retrofit 提案。`ai-ops check` は Nix がなくても bootstrap fallback として動くが、stack-bearing project では Nix audit fail = check fail。
 
 ## 完了条件
 

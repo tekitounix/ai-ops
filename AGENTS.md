@@ -27,10 +27,10 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Detailed guide: `docs/project-addition-and-migration.md`.
 - Realignment (already-running, drifted projects): `docs/realignment.md`.
 - Project physical relocation (`~/work/...` → `~/ghq/...`): `docs/project-relocation.md`.
-- Fleet audit (all ghq-tracked projects at once): `docs/fleet-audit.md`.
+- Projects audit (all ghq-tracked projects at once): `docs/projects-audit.md`.
 - Self-operation: `docs/self-operation.md`.
 
-The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow. The third prompt (`audit my fleet`) is the fleet-wide variant: walk `ghq list -p`, score each project, route every P0 / P1 finding into the matching single-project sub-flow with its own confirmation.
+The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow. The third prompt (`audit my projects`) sweeps every ghq-tracked project: walk `ghq list -p`, score each project, route every P0 / P1 finding into the matching single-project sub-flow with its own confirmation.
 
 ## Plans
 
@@ -47,11 +47,11 @@ Subcommands:
 - `ai-ops update` - survey present tools and update them with user confirmation. `--tier` defaults to 2 (required + recommended).
 - `ai-ops audit lifecycle` - self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
 - `ai-ops audit nix` - current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
-- `ai-ops audit nix --report` - walk `ghq list -p` and print fleet-wide Nix gap table.
+- `ai-ops audit nix --report` - walk `ghq list -p` and print a Nix-gap table for every project.
 - `ai-ops audit nix --propose <path>` - emit Markdown retrofit proposal for one project.
-- `ai-ops audit harness [--path PATH] [--strict]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`. Default returns 0 with a WARN when manifest is absent but harness files exist (fleet visibility); `--strict` flips that to FAIL.
+- `ai-ops audit harness [--path PATH] [--strict]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`. Default returns 0 with a WARN when manifest is absent but harness files exist (so the audit can sweep pre-adoption repos); `--strict` flips that to FAIL.
 - `ai-ops audit standard --since REF [--path PATH]` - detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
-- `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` - walk `ghq list -p`, score each project on 8 signals, emit priority-sorted table (or JSON). Exit 1 when any P0/P1 remains; backs the `audit my fleet` Quick start prompt and is safe to run from cron / CI.
+- `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` - walk `ghq list -p`, score each project on 8 signals, emit priority-sorted table (or JSON). Exit 1 when any P0/P1 remains; backs the `audit my projects` Quick start prompt and is safe to run from cron / CI.
 - `ai-ops audit security` - secret scan (works in any cwd).
 - `ai-ops check` - all audits + pytest.
 - `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` - read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.

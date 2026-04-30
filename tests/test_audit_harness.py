@@ -109,9 +109,9 @@ def test_run_harness_audit_clean_returns_zero(tmp_path: Path, capsys: pytest.Cap
 
 
 def test_run_harness_audit_no_manifest_default_is_warn_only(tmp_path: Path) -> None:
-    """Fleet-wide default: a project with harness files but no manifest is
-    untracked, not broken — return 0 + WARN so the audit can run across all
-    ghq projects without flagging every still-pre-adoption repo as failure."""
+    """Default: a project with harness files but no manifest is untracked,
+    not broken — return 0 + WARN so the audit can run across all ghq
+    projects without flagging every still-pre-adoption repo as failure."""
     (tmp_path / "AGENTS.md").write_text("agents", encoding="utf-8")
     rc = harness.run_harness_audit(tmp_path, tmp_path)
     assert rc == 0
@@ -119,7 +119,7 @@ def test_run_harness_audit_no_manifest_default_is_warn_only(tmp_path: Path) -> N
 
 def test_run_harness_audit_no_manifest_strict_returns_one(tmp_path: Path) -> None:
     """`--strict` enforces manifest presence — used in per-repo gates rather
-    than fleet surveys."""
+    than the cross-project audit."""
     (tmp_path / "AGENTS.md").write_text("agents", encoding="utf-8")
     rc = harness.run_harness_audit(tmp_path, tmp_path, strict=True)
     assert rc == 1

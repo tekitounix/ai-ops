@@ -1,8 +1,8 @@
-"""Fleet audit: walk every ghq-tracked project, collect drift signals,
+"""Projects audit: walk every ghq-tracked project, collect drift signals,
 prioritize, and recommend a sub-flow per project.
 
 The CLI provides deterministic collection + table assembly so AI agents
-(via the `audit my fleet` Quick start prompt) and scheduled jobs
+(via the `audit my projects` Quick start prompt) and scheduled jobs
 (cron / CI) see identical priority assignments. The CLI itself is
 read-only; remediation is per-project under user confirmation through
 the linked sub-flow playbooks (relocate / migrate / realign).
@@ -37,7 +37,7 @@ ENV_TEMPLATE_SUFFIXES = frozenset({
 
 # `find`-style skip: directories that hold dependencies / build artifacts /
 # vendored third-party trees; their content is not part of the project's
-# own secret hygiene. A first real-world fleet audit on a project with
+# own secret hygiene. A first real-world projects audit on a project with
 # STM32 + mbedTLS vendored under `third_party/` produced 193 false-positive
 # secret-name hits (TLS test fixtures), all from vendored content.
 SKIP_DIR_PARTS = frozenset({
@@ -73,8 +73,8 @@ STALE_COMMIT_DAYS = 540
 
 
 @dataclasses.dataclass
-class FleetSignals:
-    """Signals collected for a single project during fleet audit Phase 1."""
+class ProjectSignals:
+    """Signals collected for a single project during projects audit Phase 1."""
 
     project: str
     path: Path
@@ -201,7 +201,7 @@ def _git_ls_files(path: Path) -> list[str]:
 def _todo_count(path: Path) -> int:
     """Count TODO/FIXME/WIP/TBD across text sources via ripgrep.
 
-    Returns 0 if rg is not installed (fleet audit must not depend on rg
+    Returns 0 if rg is not installed (projects audit must not depend on rg
     being present; the count is a P2-only signal so degrading to 0 is fine).
     """
     if not shutil.which("rg"):
@@ -266,7 +266,7 @@ def _is_ai_ops_repo(path: Path) -> bool:
     """ai-ops itself is the source-of-truth repo for the methodology, not a
     consumer that seeds `.ai-ops/harness.toml`. Detect by structural shape
     (AGENTS.md + ai_ops/ Python package + docs/decisions ADR set) so the
-    fleet audit doesn't recommend `migrate` against ai-ops itself."""
+    projects audit doesn't recommend `migrate` against ai-ops itself."""
     return (
         (path / "AGENTS.md").is_file()
         and (path / "ai_ops" / "cli.py").is_file()
@@ -274,7 +274,7 @@ def _is_ai_ops_repo(path: Path) -> bool:
     )
 
 
-def collect_signals(path: Path) -> FleetSignals:
+def collect_signals(path: Path) -> ProjectSignals:
     """Read-only signal collection for one project. Never writes."""
     loc = "ok" if _under_ghq_root(path) else "DRIFT"
     if (path / HARNESS_MANIFEST).is_file():
@@ -357,7 +357,7 @@ def collect_signals(path: Path) -> FleetSignals:
     else:
         sub_flow = "no-op"
 
-    return FleetSignals(
+    return ProjectSignals(
         project=path.name,
         path=path,
         loc=loc,
@@ -382,7 +382,7 @@ def collect_signals(path: Path) -> FleetSignals:
 # ─────────────────────────────────────────────────────
 
 
-def signals_to_dict(s: FleetSignals) -> dict:
+def signals_to_dict(s: ProjectSignals) -> dict:
     return {
         "project": s.project,
         "path": str(s.path),
@@ -413,7 +413,7 @@ def _shorten_path(path: Path, width: int = 50) -> str:
     return s
 
 
-def _print_table(signals_list: list[FleetSignals]) -> None:
+def _print_table(signals_list: list[ProjectSignals]) -> None:
     cols = (
         ("project", 28),
         ("path", 52),
@@ -462,7 +462,7 @@ def _print_table(signals_list: list[FleetSignals]) -> None:
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 
 
-def run_fleet_audit(
+def run_projects_audit(
     roots: list[Path] | None = None,
     *,
     json_output: bool = False,
@@ -478,12 +478,12 @@ def run_fleet_audit(
         print("No projects found via ghq list -p", file=sys.stderr)
         return 1
 
-    signals_list: list[FleetSignals] = []
+    signals_list: list[ProjectSignals] = []
     for p in paths:
         try:
             signals_list.append(collect_signals(p))
         except Exception as exc:
-            # One bad project must not abort a fleet survey.
+            # One bad project must not abort the audit run.
             print(
                 f"  ERROR: {p}: {type(exc).__name__}: {str(exc)[:80]}",
                 file=sys.stderr,
@@ -502,13 +502,13 @@ def run_fleet_audit(
         n_p2 = sum(1 for s in signals_list if s.priority == "P2")
         n_managed = sum(1 for s in signals_list if s.mgd == "yes")
         print(
-            f"==> Fleet audit: {len(signals_list)} project(s) "
+            f"==> Projects audit: {len(signals_list)} project(s) "
             f"(managed={n_managed}, P0={n_p0}, P1={n_p1}, P2={n_p2})\n"
         )
         _print_table(signals_list)
         print(
             "\nRoute each P0 / P1 to its sub-flow with per-project confirmation "
-            "(relocate / migrate / realign). See docs/fleet-audit.md."
+            "(relocate / migrate / realign). See docs/projects-audit.md."
         )
 
     has_action = any(s.priority in ("P0", "P1") for s in signals_list)

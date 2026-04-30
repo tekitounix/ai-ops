@@ -10,7 +10,7 @@ A small Python CLI that lets AI coding agents (Claude Code, Codex, Cursor, ...) 
 
 ## Why
 
-Templates like cookiecutter / copier / yeoman freeze decisions before a project is born — name, layout, stack are all chosen up front and copy-pasted. The right shape depends on the project, and AI agents can reason about it. ai-ops gives them the framework: read context, draft a Brief (Fact / Inference / Risk / User decision / AI recommendation), wait for human confirmation, then execute with normal tools.
+The right shape for a project — its name, layout, stack, harness, and check command — depends on what the project actually is. AI agents can reason about that case by case rather than copy-pasting from a fixed template. ai-ops gives them the framework: read context, draft a Brief (Fact / Inference / Risk / User decision / AI recommendation), wait for human confirmation, then execute with normal tools.
 
 ## Quick start
 
@@ -25,14 +25,14 @@ Per github.com/tekitounix/ai-ops, align this project.
 ```
 
 ```text
-Per github.com/tekitounix/ai-ops, audit my fleet.
+Per github.com/tekitounix/ai-ops, audit my projects.
 ```
 
 The first prompt is for greenfield work: only `<purpose>` needs to come from you, since the agent has no working tree to read. It drafts an 11-section Brief (name, repo placement under `~/ghq/...`, tier, stack, check command), proposes the target shape, and only creates files after your confirmation.
 
 The second prompt is the single entry point for any existing working tree. The agent inspects the cwd read-only and decides which sub-flow applies — migrate (not yet ai-ops-managed), realign (managed but drifted), relocate (path is outside `~/ghq/...`), or report "no action needed" — then waits for per-scope confirmation before editing.
 
-The third prompt is fleet-wide. The agent walks `ghq list -p`, collects per-project signals (managed status, nix gap, secret-name files, location drift, recency, dirty state, TODO churn), and emits a priority-sorted Fleet Audit Brief. Action is still per-project: each P0 / P1 entry routes into the appropriate sub-flow (relocate / migrate / realign) with its own confirmation. P2 rows are observation only.
+The third prompt sweeps every ghq-tracked project at once. The agent walks `ghq list -p`, collects per-project signals (managed status, nix gap, secret-name files, location drift, recency, dirty state, TODO churn), and emits a priority-sorted Audit Brief. Action is still per-project: each P0 / P1 entry routes into the appropriate sub-flow (relocate / migrate / realign) with its own confirmation. P2 rows are observation only.
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
 
@@ -62,11 +62,11 @@ Requires Python 3.11+. Zero runtime dependencies (stdlib only).
 | `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
 | `ai-ops bootstrap [--tier {1,2}]` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation. Default `--tier 1` (required only) |
 | `ai-ops update [--tier {1,2}]` | Survey present tools and update them with user confirmation. Default `--tier 2` (required + recommended) |
-| `ai-ops audit {lifecycle,nix,security,harness,standard,fleet}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo; `fleet` walks all ghq-tracked projects) |
-| `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` | Walk `ghq list -p`, score each project on 8 signals, emit a priority-sorted table (`--json` for machine output). Exit 1 if any P0/P1 remains — usable from cron / CI |
-| `ai-ops audit nix --report` | Walk `ghq list -p` and print a fleet table of Nix gaps |
+| `ai-ops audit {lifecycle,nix,security,harness,standard,projects}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo; `projects` walks all ghq-tracked projects) |
+| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | Walk `ghq list -p`, score each project on 8 signals, emit a priority-sorted table (`--json` for machine output). Exit 1 if any P0/P1 remains — usable from cron / CI |
+| `ai-ops audit nix --report` | Walk `ghq list -p` and print a Nix-gap table for every project |
 | `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
-| `ai-ops audit harness [--path PATH] [--strict]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes). Default treats manifest absence as a non-blocking warning so fleet surveys can run across pre-adoption repos; `--strict` makes manifest absence a failure |
+| `ai-ops audit harness [--path PATH] [--strict]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes). Default treats manifest absence as a non-blocking warning so the audit can run across pre-adoption repos; `--strict` makes manifest absence a failure |
 | `ai-ops audit standard --since REF` | Detect ADR (docs/decisions/) changes since a reference for propagation |
 | `ai-ops check` | All audits + pytest |
 | `ai-ops promote-plan <slug> [--source PATH]` | Promote a user-selected local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
@@ -111,7 +111,7 @@ This repo is not a *silent* installer. It does not modify user shells, global gi
 - **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
 - **Self-operation**: how ai-ops dogfoods its own lifecycle, release gate, file hygiene, and drift review. See [docs/self-operation.md](docs/self-operation.md).
 - **Realignment**: how an already-running project that has drifted from its operational ideal is brought back. Read-only Discovery -> Realignment Brief -> per-scope Execute on confirmation. See [docs/realignment.md](docs/realignment.md).
-- **Fleet audit**: how all ghq-tracked projects are surveyed at once. Priority-sorted Fleet Audit Brief routes each P0 / P1 finding into the matching sub-flow with per-project confirmation. See [docs/fleet-audit.md](docs/fleet-audit.md).
+- **Projects audit**: how every ghq-tracked project is surveyed at once. The priority-sorted Audit Brief routes each P0 / P1 finding into the matching sub-flow with per-project confirmation. See [docs/projects-audit.md](docs/projects-audit.md).
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
 - **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
 - **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
@@ -127,7 +127,7 @@ docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
   realignment.md
-  fleet-audit.md
+  projects-audit.md
   self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive

@@ -1,4 +1,4 @@
-"""Tests for ai_ops.audit.fleet (Phase 11 fleet audit)."""
+"""Tests for ai_ops.audit.projects (Phase 11 projects audit)."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_ops.audit import fleet
+from ai_ops.audit import projects
 
 
 # Split literal so this test file does not self-flag in audit security.
@@ -55,7 +55,7 @@ def test_collect_signals_p0_for_secret_file(tmp_path: Path) -> None:
     p.mkdir()
     _git_init(p)
     (p / ".env").write_text("API_KEY=real\n", encoding="utf-8")
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.sec >= 1
     assert s.priority == "P0"
 
@@ -67,7 +67,7 @@ def test_collect_signals_excludes_env_template(tmp_path: Path) -> None:
     _git_init(p)
     for name in (".env.example", ".env.template", ".env.sample"):
         (p / name).write_text("KEY=__placeholder__\n", encoding="utf-8")
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.sec == 0
 
 
@@ -76,7 +76,7 @@ def test_collect_signals_p0_for_location_drift(tmp_path: Path) -> None:
     p = tmp_path / "outside-ghq"
     p.mkdir()
     _git_init(p)
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.loc == "DRIFT"
     assert s.priority == "P0"
     assert s.sub_flow == "relocate"
@@ -87,7 +87,7 @@ def test_collect_signals_skips_dependency_dirs_for_secrets(tmp_path: Path) -> No
     sec — they are vendored / generated, not the project's own secrets.
 
     Includes the third-party / external / deps / subprojects directories that
-    a real fleet audit caught producing false positives (STM32 + mbedTLS
+    a real audit run caught producing false positives (STM32 + mbedTLS
     test fixtures vendored under `third_party/`)."""
     p = tmp_path / "proj"
     p.mkdir()
@@ -99,7 +99,7 @@ def test_collect_signals_skips_dependency_dirs_for_secrets(tmp_path: Path) -> No
         (p / d).mkdir()
         (p / d / ".env").write_text("foo\n", encoding="utf-8")
         (p / d / "test.pem").write_text("-----BEGIN-----\n", encoding="utf-8")
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.sec == 0
 
 
@@ -126,7 +126,7 @@ def test_collect_signals_skips_git_submodule_paths(tmp_path: Path) -> None:
     (parent / "vendor-sub" / "test.pem").write_text(
         "-----BEGIN CERT-----\n", encoding="utf-8"
     )
-    s = fleet.collect_signals(parent)
+    s = projects.collect_signals(parent)
     assert s.sec == 0
 
 
@@ -142,7 +142,7 @@ def test_collect_signals_marks_ai_ops_repo_as_source_of_truth(tmp_path: Path) ->
     (p / "ai_ops" / "cli.py").write_text("def main(): pass\n", encoding="utf-8")
     (p / "docs").mkdir()
     (p / "docs" / "decisions").mkdir()
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.mgd == "src"  # source-of-truth marker
     assert s.sub_flow == "no-op"  # never recommend migrate against ai-ops itself
 
@@ -162,7 +162,7 @@ def test_p1_for_unmanaged_stack_project_under_ghq(
     (p / "package.json").write_text('{"name":"x"}', encoding="utf-8")
     subprocess.run(["git", "-C", str(p), "add", "."], check=True)
     subprocess.run(["git", "-C", str(p), "commit", "-q", "-m", "stack"], check=True)
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.loc == "ok"
     assert s.has_stack is True
     assert s.nix == "missing"
@@ -181,7 +181,7 @@ def test_p2_for_docs_only_project_under_ghq(
     (p / "notes.md").write_text("# notes\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(p), "add", "."], check=True)
     subprocess.run(["git", "-C", str(p), "commit", "-q", "-m", "docs"], check=True)
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.is_docs_only is True
     assert s.nix == "n/a"
     assert s.priority == "P2"
@@ -192,14 +192,14 @@ def test_p2_unmanaged_project_recommends_no_op_not_migrate(
 ) -> None:
     """P2 means "no action needed". Validation / fixture / pure-docs repos
     that happen to be unmanaged must NOT get a `migrate` recommendation —
-    that would contradict P2 and pollute the fleet view with noise."""
+    that would contradict P2 and pollute the projects view with noise."""
     _stub_home(monkeypatch, tmp_path)
     p = _make_under_ghq(tmp_path, "local", "owner", "fixture")
     _git_init(p)
     (p / "notes.md").write_text("# notes\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(p), "add", "."], check=True)
     subprocess.run(["git", "-C", str(p), "commit", "-q", "-m", "docs"], check=True)
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.priority == "P2"
     assert s.sub_flow == "no-op"  # not migrate
 
@@ -225,7 +225,7 @@ def test_p2_for_clean_managed_project_under_ghq(
         last_sync="2026-04-29T00:00:00+00:00",
     )
     (p / ".ai-ops" / "harness.toml").write_text(m.to_toml(), encoding="utf-8")
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.mgd == "yes"
     assert s.harness_drift is False
     assert s.priority == "P2"
@@ -246,7 +246,7 @@ def test_p1_realign_for_managed_with_harness_drift(
     (p / ".ai-ops").mkdir()
     (p / ".ai-ops" / "harness.toml").write_text(m.to_toml(), encoding="utf-8")
     (p / "AGENTS.md").write_text("v2-drift", encoding="utf-8")
-    s = fleet.collect_signals(p)
+    s = projects.collect_signals(p)
     assert s.harness_drift is True
     assert s.priority == "P1"
     assert s.sub_flow == "realign"
@@ -257,14 +257,14 @@ def test_p1_realign_for_managed_with_harness_drift(
 # ─────────────────────────────────────────────────────
 
 
-def test_run_fleet_audit_json_schema(
+def test_run_projects_audit_json_schema(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`--json` emits a parseable list of rows with the documented keys."""
     p = tmp_path / "proj"
     p.mkdir()
     _git_init(p)
-    fleet.run_fleet_audit(roots=[p], json_output=True)
+    projects.run_projects_audit(roots=[p], json_output=True)
     out = capsys.readouterr().out
     rows = json.loads(out)
     assert isinstance(rows, list) and len(rows) == 1
@@ -277,21 +277,21 @@ def test_run_fleet_audit_json_schema(
     assert expected_keys <= set(rows[0])
 
 
-def test_run_fleet_audit_text_table_summary(
+def test_run_projects_audit_text_table_summary(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Default text output prints summary line plus a header row."""
     p = tmp_path / "proj"
     p.mkdir()
     _git_init(p)
-    fleet.run_fleet_audit(roots=[p])
+    projects.run_projects_audit(roots=[p])
     out = capsys.readouterr().out
-    assert "Fleet audit:" in out
+    assert "Projects audit:" in out
     assert "P0=" in out and "P1=" in out and "P2=" in out
     assert "sub-flow" in out  # column header
 
 
-def test_run_fleet_audit_priority_filter(
+def test_run_projects_audit_priority_filter(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`--priority P2` keeps only P2 rows; with one DRIFT (P0) input, output
@@ -299,7 +299,7 @@ def test_run_fleet_audit_priority_filter(
     drift = tmp_path / "outside"
     drift.mkdir()
     _git_init(drift)
-    rc = fleet.run_fleet_audit(
+    rc = projects.run_projects_audit(
         roots=[drift], json_output=True, priority_filter="P2"
     )
     out = capsys.readouterr().out
@@ -313,17 +313,17 @@ def test_run_fleet_audit_priority_filter(
 # ─────────────────────────────────────────────────────
 
 
-def test_run_fleet_audit_exit_code_nonzero_when_p0_present(
+def test_run_projects_audit_exit_code_nonzero_when_p0_present(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     drift = tmp_path / "outside"
     drift.mkdir()
     _git_init(drift)
-    rc = fleet.run_fleet_audit(roots=[drift], json_output=True)
+    rc = projects.run_projects_audit(roots=[drift], json_output=True)
     assert rc == 1
 
 
-def test_run_fleet_audit_exit_code_zero_when_only_p2(
+def test_run_projects_audit_exit_code_zero_when_only_p2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _stub_home(monkeypatch, tmp_path)
@@ -332,7 +332,7 @@ def test_run_fleet_audit_exit_code_zero_when_only_p2(
     (p / "notes.md").write_text("# notes\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(p), "add", "."], check=True)
     subprocess.run(["git", "-C", str(p), "commit", "-q", "-m", "docs"], check=True)
-    rc = fleet.run_fleet_audit(roots=[p], json_output=True)
+    rc = projects.run_projects_audit(roots=[p], json_output=True)
     assert rc == 0
 
 
@@ -341,34 +341,34 @@ def test_run_fleet_audit_exit_code_zero_when_only_p2(
 # ─────────────────────────────────────────────────────
 
 
-def test_run_fleet_audit_continues_after_per_project_error(
+def test_run_projects_audit_continues_after_per_project_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """One broken project (corrupted .git, symlink loop, perm denied) must
-    not abort a fleet survey."""
+    not abort an audit run."""
     good = tmp_path / "good"
     good.mkdir()
     _git_init(good)
     bad = tmp_path / "bad"
     bad.mkdir()
 
-    real = fleet.collect_signals
+    real = projects.collect_signals
 
     def flaky(path):
         if path == bad:
             raise RuntimeError("simulated corruption")
         return real(path)
 
-    monkeypatch.setattr(fleet, "collect_signals", flaky)
-    rc = fleet.run_fleet_audit(roots=[good, bad], json_output=True)
+    monkeypatch.setattr(projects, "collect_signals", flaky)
+    rc = projects.run_projects_audit(roots=[good, bad], json_output=True)
     # rc reflects only successful collections; bad project surfaces via stderr
     assert rc in (0, 1)
 
 
-def test_run_fleet_audit_no_projects_returns_one(
+def test_run_projects_audit_no_projects_returns_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """If `ghq list -p` yields nothing, the fleet view fails fast (rc=1)."""
-    monkeypatch.setattr(fleet, "_ghq_list_paths", lambda: [])
-    rc = fleet.run_fleet_audit()
+    """If `ghq list -p` yields nothing, the audit fails fast (rc=1)."""
+    monkeypatch.setattr(projects, "_ghq_list_paths", lambda: [])
+    rc = projects.run_projects_audit()
     assert rc == 1

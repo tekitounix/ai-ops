@@ -196,7 +196,7 @@ def run_harness_audit(
       - 0 when the harness is in sync with its manifest, or when no manifest
         exists and the project hasn't adopted ai-ops harness files yet.
       - 0 when no manifest exists but harness files are present, *unless*
-        `strict=True`. The default is "non-blocking visibility": fleet-wide
+        `strict=True`. The default is "non-blocking visibility": cross-project
         runs over many projects show adoption status without failing every
         repo that hasn't seeded a manifest yet.
       - 1 when manifest exists and drift is detected, or when

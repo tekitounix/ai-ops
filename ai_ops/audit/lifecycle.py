@@ -13,9 +13,9 @@ REQUIRED_FILES = (
     "README.md",
     "AGENTS.md",
     "docs/ai-first-lifecycle.md",
-    "docs/fleet-audit.md",
     "docs/project-addition-and-migration.md",
     "docs/project-relocation.md",
+    "docs/projects-audit.md",
     "docs/realignment.md",
     "docs/self-operation.md",
     "docs/decisions/0007-python-canonical-cli.md",
@@ -38,7 +38,7 @@ REQUIRED_FILES = (
     "ai_ops/lifecycle/project.py",
     "ai_ops/lifecycle/migration.py",
     "ai_ops/lifecycle/plans.py",
-    "ai_ops/audit/fleet.py",
+    "ai_ops/audit/projects.py",
     "ai_ops/bootstrap.py",
 )
 

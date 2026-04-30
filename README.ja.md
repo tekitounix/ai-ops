@@ -10,7 +10,7 @@ ai-ops は小さな Python CLI で、AI コーディング agent (Claude Code、
 
 ## なぜ
 
-cookiecutter / copier / yeoman などのテンプレートは、プロジェクトが生まれる前にディレクトリ構成や stack を凍結してしまう。理想的な形はプロジェクトごとに異なり、AI agent はそれを推論できる。ai-ops はそのための枠組みを提供する: 文脈を読み、構造化された Brief (Fact / Inference / Risk / User decision / AI recommendation) を起草し、ユーザーの確認を待ってから通常のツールで実行する。
+プロジェクトの理想的な形 (名前・ディレクトリ構成・stack・harness・check 体制) は、 そのプロジェクトが何かによって変わる。 固定のテンプレートをコピーするより、 AI agent がプロジェクトごとに推論する方が筋が良い。 ai-ops はそのための枠組みを提供する: 文脈を読み、 構造化された Brief (Fact / Inference / Risk / User decision / AI recommendation) を起草し、 ユーザーの確認を待ってから通常のツールで実行する。
 
 ## 最短開始
 
@@ -25,14 +25,14 @@ github.com/tekitounix/ai-ops に従って、このプロジェクトを整えて
 ```
 
 ```text
-github.com/tekitounix/ai-ops に従って、自分の fleet を監査してください。
+github.com/tekitounix/ai-ops に従って、自分のプロジェクト群を監査してください。
 ```
 
 最初のプロンプトは新規プロジェクト用。観察対象の working tree がないため、目的だけは user が伝える必要がある (末尾の「<やりたいこと>」を書き換えるだけ)。 agent は 11-section の Brief を起草し、target の形 (name、`~/ghq/...` への配置、tier、stack、check コマンド) を提案し、ユーザーの確認を経てから初めてファイルを作成する。
 
 2 つ目のプロンプトは既存 working tree 全般の単一 entry point。agent が cwd を read-only で観察し、どの sub-flow に行くかを自分で判断する ── migrate (ai-ops 未管理)、realign (管理済みだが drift)、relocate (path が `~/ghq/...` 外)、または「対応不要」を返す。判断後、scope ごとに個別の承認を待ってから編集する。
 
-3 つ目のプロンプトは fleet-wide 監査。agent が `ghq list -p` を walk し、 各 project から signal (managed 状態 / nix gap / secret-name file / location drift / 最終 commit / dirty state / TODO 滞留) を収集して、 priority-sorted の Fleet Audit Brief を出す。 action は per-project のまま ── 各 P0 / P1 行を適切な sub-flow (relocate / migrate / realign) に route し、 1 件ずつ確認を取る。 P2 行は観察のみ。
+3 つ目のプロンプトは ghq 管理下の全プロジェクトを一気に監査する。agent が `ghq list -p` を walk し、各 project から signal (managed 状態 / nix gap / secret-name file / location drift / 最終 commit / dirty state / TODO 滞留) を集めて、priority-sorted の Audit Brief を出す。実行は per-project のまま ── 各 P0 / P1 行を適切な sub-flow (relocate / migrate / realign) に route し、 1 件ずつ確認を取る。 P2 行は観察のみ。
 
 すでに AI session のなかで作業している場合、その AI から `--agent claude` / `--agent codex` で別の AI を入れ子で呼び出さない。必要なら `--agent prompt-only` または `--dry-run` を使い、prompt / brief / discovery の出力だけを得る。
 
@@ -62,11 +62,11 @@ Python 3.11 以上が必要。実行時依存はゼロ (stdlib のみ)。
 | `ai-ops migrate <path> --retrofit-nix` | 既管理 project に `flake.nix` + `.envrc` を追加する narrow scope |
 | `ai-ops bootstrap [--tier {1,2}]` | 必須 tool (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) の存在確認と、ユーザー承認後の install。default `--tier 1` (必須のみ) |
 | `ai-ops update [--tier {1,2}]` | 既存 tool の survey と、ユーザー承認後の update。default `--tier 2` (必須 + 推奨) |
-| `ai-ops audit {lifecycle,nix,security,harness,standard,fleet}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd、`fleet` は ghq 管理下の全 project を walk) |
-| `ai-ops audit fleet [--json] [--priority {P0,P1,P2,all}]` | `ghq list -p` を walk し各 project を 8 signal で採点、 priority-sorted table を出力 (`--json` で機械可読)。 P0/P1 が残れば exit 1 — cron / CI から利用可 |
-| `ai-ops audit nix --report` | `ghq list -p` を歩いて fleet 全体の Nix gap table を出力 |
+| `ai-ops audit {lifecycle,nix,security,harness,standard,projects}` | 自己 audit (`lifecycle` は ai-ops 自身、`security` は任意 cwd、`projects` は ghq 管理下の全 project を walk) |
+| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | `ghq list -p` を walk し各 project を 8 signal で採点、 priority-sorted table を出力 (`--json` で機械可読)。 P0/P1 が残れば exit 1 — cron / CI から利用可 |
+| `ai-ops audit nix --report` | `ghq list -p` を歩いて全 project の Nix gap table を出力 |
 | `ai-ops audit nix --propose <path>` | 1 project 用の Markdown retrofit 提案を出力 |
-| `ai-ops audit harness [--path PATH] [--strict]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出。 default では manifest 不在を non-blocking warning として扱い fleet survey を pre-adoption repo 横断で回せる。 `--strict` で manifest 不在を failure に昇格 |
+| `ai-ops audit harness [--path PATH] [--strict]` | `.ai-ops/harness.toml` と実 file hash を比較し harness drift を検出。 default では manifest 不在を non-blocking warning として扱い、 監査を pre-adoption repo 横断で回せる。 `--strict` で manifest 不在を failure に昇格 |
 | `ai-ops audit standard --since REF` | reference 以降の ADR (docs/decisions/) 変更を検出 (propagation 用) |
 | `ai-ops check` | 全 audit + pytest |
 | `ai-ops promote-plan <slug> [--source PATH]` | ユーザーが選んだ local AI plan を、確認のうえ `docs/plans/<slug>/plan.md` へ昇格 |
@@ -111,7 +111,7 @@ Git: 履歴と復元 (repo 内 archive は通常不要)
 - **Execution plan**: 非自明な execution work 用の living plan。`docs/plans/<slug>/plan.md` に置き、[templates/plan.md](templates/plan.md) を起点にする。
 - **Self-operation**: ai-ops 自身の dogfood、release gate、file hygiene、drift review の運用。[docs/self-operation.md](docs/self-operation.md) を参照。
 - **Realignment**: すでに運用しているが理想からずれてしまったプロジェクトを ai-ops モデルへ戻す手順。read-only Discovery → Realignment Brief → scope 単位の Execute on confirmation。[docs/realignment.md](docs/realignment.md) を参照。
-- **Fleet audit**: ghq 管理下の全プロジェクトを一気に監査する手順。priority-sorted Fleet Audit Brief で各 P0 / P1 を該当 sub-flow に route、 per-project confirmation で実行する。[docs/fleet-audit.md](docs/fleet-audit.md) を参照。
+- **Projects audit**: ghq 管理下の全プロジェクトを一気に監査する手順。 priority-sorted の Audit Brief で各 P0 / P1 を該当 sub-flow に route、 per-project confirmation で実行する。 [docs/projects-audit.md](docs/projects-audit.md) を参照。
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII)。[docs/project-addition-and-migration.md](docs/project-addition-and-migration.md) を参照。
 - **Operation Model**: 破壊的・横断的変更には Propose → Confirm → Execute。[AGENTS.md](AGENTS.md) で定義。
 - **Multi-agent**: parallel session は `claude --worktree` または Codex の built-in worktree を使う。AGENTS.md "Multi-agent" を参照。
@@ -127,7 +127,7 @@ docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
   realignment.md
-  fleet-audit.md
+  projects-audit.md
   self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive

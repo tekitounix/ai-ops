@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ai_ops.agents.prompt_only import PromptOnlyAgent
 from ai_ops.agents.subprocess import SubprocessAgent
-from ai_ops.audit.fleet import run_fleet_audit
+from ai_ops.audit.projects import run_projects_audit
 from ai_ops.audit.harness import run_harness_audit
 from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
@@ -104,13 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "kind",
         nargs="?",
-        choices=("lifecycle", "nix", "security", "harness", "standard", "fleet"),
+        choices=("lifecycle", "nix", "security", "harness", "standard", "projects"),
         default="lifecycle",
     )
     audit.add_argument(
         "--report",
         action="store_true",
-        help="Nix only: walk ghq list -p and print fleet survey",
+        help="Nix only: walk ghq list -p and print a Nix-gap table for every project",
     )
     audit.add_argument(
         "--propose",
@@ -132,13 +132,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--json",
         action="store_true",
-        help="Fleet only: emit JSON instead of the text table",
+        help="Projects only: emit JSON instead of the text table",
     )
     audit.add_argument(
         "--priority",
         choices=("P0", "P1", "P2", "all"),
         default="all",
-        help="Fleet only: filter rows by priority (default: all)",
+        help="Projects only: filter rows by priority (default: all)",
     )
     audit.add_argument(
         "--since",
@@ -288,8 +288,8 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
             project_root=target,
             since_ref=args.since,
         )
-    if args.kind == "fleet":
-        return run_fleet_audit(
+    if args.kind == "projects":
+        return run_projects_audit(
             json_output=getattr(args, "json", False),
             priority_filter=getattr(args, "priority", "all"),
         )

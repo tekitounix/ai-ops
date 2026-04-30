@@ -420,7 +420,7 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
     """Walk ghq list -p (or provided roots), emit recommendation table.
 
     The `mgd` column shows whether the project has been onboarded to ai-ops
-    harness tracking (`.ai-ops/harness.toml` present). A fleet survey can
+    harness tracking (`.ai-ops/harness.toml` present). A cross-project run can
     then separate ai-ops-managed projects from validation fixtures /
     untouched repos at a glance.
     """
@@ -429,7 +429,7 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
         print("No projects found via ghq list -p")
         return 1
 
-    print("==> Nix fleet survey (rubric, ADR 0005)")
+    print("==> Nix gap survey across projects (rubric, ADR 0005)")
     print(f"  {len(paths)} project(s)\n")
     print(
         f"{'project':<50} {'mgd':<4} {'stack':<10} {'cur':<5} "
@@ -455,7 +455,7 @@ def run_nix_report(roots: list[Path] | None = None) -> int:
             r = evaluate_project(p)
         except Exception as exc:
             # One bad project (corrupted .git, symlink loop, permission denied)
-            # must not abort a fleet survey. Emit an error row and move on.
+            # must not abort the audit run. Emit an error row and move on.
             print(f"{name:<50} {mgd_label:<4} ERROR: {type(exc).__name__}: {str(exc)[:55]}")
             n_error += 1
             continue
