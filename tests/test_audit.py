@@ -184,6 +184,7 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
     assert "templates/plan.md" in REQUIRED_FILES
     assert "docs/decisions/0008-plan-persistence.md" in REQUIRED_FILES
+    assert "docs/fleet-audit.md" in REQUIRED_FILES
     assert "docs/project-relocation.md" in REQUIRED_FILES
     assert "docs/realignment.md" in REQUIRED_FILES
 
@@ -231,6 +232,46 @@ def test_align_prompt_chain_reaches_relocation_playbook() -> None:
         assert ext_glob in relocation, f"rewrite scope missing pattern {ext_glob}"
     assert "INVARIANT:" in relocation  # Step 3.1 / 3.2 mis-implementation guards
     assert "${source_hash#-}" in relocation  # leading-dash strip in fragment naming
+
+
+def test_audit_my_fleet_prompt_chain_reaches_fleet_audit_playbook() -> None:
+    """The third Quick start prompt (`audit my fleet`) must reach
+    docs/fleet-audit.md through static doc references — without the
+    chain, the agent has no canonical playbook to follow when asked to
+    survey ghq projects fleet-wide."""
+    repo = Path(__file__).resolve().parents[1]
+
+    readme = (repo / "README.md").read_text(encoding="utf-8")
+    assert "audit my fleet" in readme
+    assert "docs/fleet-audit.md" in readme
+
+    readme_ja = (repo / "README.ja.md").read_text(encoding="utf-8")
+    assert "自分の fleet を監査" in readme_ja  # ja prompt body
+    assert "docs/fleet-audit.md" in readme_ja
+
+    agents_md = (repo / "AGENTS.md").read_text(encoding="utf-8")
+    assert "docs/fleet-audit.md" in agents_md
+    assert "audit my fleet" in agents_md  # third-prompt explanation
+
+    fleet = (repo / "docs" / "fleet-audit.md").read_text(encoding="utf-8")
+    assert "Phase 1" in fleet and "Phase 4" in fleet
+    # Priority taxonomy and sub-flow routing must both be documented;
+    # otherwise the agent would have nowhere to derive recommendations.
+    assert "P0" in fleet and "P1" in fleet and "P2" in fleet
+    assert "ghq list -p" in fleet
+    for sub in ("relocate", "migrate", "realign", "no-op"):
+        assert sub in fleet, f"sub-flow `{sub}` missing from fleet-audit playbook"
+    # The playbook must explicitly defer destructive work to the linked
+    # single-project playbooks rather than redefining their steps.
+    for linked in (
+        "docs/project-relocation.md",
+        "docs/project-addition-and-migration.md",
+        "docs/realignment.md",
+    ):
+        assert linked in fleet, f"fleet-audit playbook does not link {linked}"
+    # Validation / fixture exclusion is what prevents drift counts from
+    # being polluted by intentionally unmanaged repos.
+    assert "fixture" in fleet.lower()
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:

@@ -24,9 +24,15 @@ Per github.com/tekitounix/ai-ops, set up a new project for "<purpose>".
 Per github.com/tekitounix/ai-ops, align this project.
 ```
 
+```text
+Per github.com/tekitounix/ai-ops, audit my fleet.
+```
+
 The first prompt is for greenfield work: only `<purpose>` needs to come from you, since the agent has no working tree to read. It drafts an 11-section Brief (name, repo placement under `~/ghq/...`, tier, stack, check command), proposes the target shape, and only creates files after your confirmation.
 
 The second prompt is the single entry point for any existing working tree. The agent inspects the cwd read-only and decides which sub-flow applies — migrate (not yet ai-ops-managed), realign (managed but drifted), relocate (path is outside `~/ghq/...`), or report "no action needed" — then waits for per-scope confirmation before editing.
+
+The third prompt is fleet-wide. The agent walks `ghq list -p`, collects per-project signals (managed status, nix gap, secret-name files, location drift, recency, dirty state, TODO churn), and emits a priority-sorted Fleet Audit Brief. Action is still per-project: each P0 / P1 entry routes into the appropriate sub-flow (relocate / migrate / realign) with its own confirmation. P2 rows are observation only.
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
 
@@ -104,6 +110,7 @@ This repo is not a *silent* installer. It does not modify user shells, global gi
 - **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
 - **Self-operation**: how ai-ops dogfoods its own lifecycle, release gate, file hygiene, and drift review. See [docs/self-operation.md](docs/self-operation.md).
 - **Realignment**: how an already-running project that has drifted from its operational ideal is brought back. Read-only Discovery -> Realignment Brief -> per-scope Execute on confirmation. See [docs/realignment.md](docs/realignment.md).
+- **Fleet audit**: how all ghq-tracked projects are surveyed at once. Priority-sorted Fleet Audit Brief routes each P0 / P1 finding into the matching sub-flow with per-project confirmation. See [docs/fleet-audit.md](docs/fleet-audit.md).
 - **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
 - **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
 - **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
@@ -119,6 +126,7 @@ docs/
   ai-first-lifecycle.md
   project-addition-and-migration.md
   realignment.md
+  fleet-audit.md
   self-operation.md
   decisions/   ADR 0001-0008
   plans/       active execution plans + archive

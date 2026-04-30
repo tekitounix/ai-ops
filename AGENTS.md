@@ -27,9 +27,10 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Detailed guide: `docs/project-addition-and-migration.md`.
 - Realignment (already-running, drifted projects): `docs/realignment.md`.
 - Project physical relocation (`~/work/...` → `~/ghq/...`): `docs/project-relocation.md`.
+- Fleet audit (all ghq-tracked projects at once): `docs/fleet-audit.md`.
 - Self-operation: `docs/self-operation.md`.
 
-The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow.
+The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow. The third prompt (`audit my fleet`) is the fleet-wide variant: walk `ghq list -p`, score each project, route every P0 / P1 finding into the matching single-project sub-flow with its own confirmation.
 
 ## Plans
 
