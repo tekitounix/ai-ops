@@ -209,6 +209,13 @@ def test_align_prompt_chain_reaches_relocation_playbook() -> None:
     relocation = (repo / "docs" / "project-relocation.md").read_text(encoding="utf-8")
     assert "Phase 1" in relocation and "Phase 4" in relocation
     assert ".claude/projects" in relocation  # AI substrate handling documented
+    # full-migration invariants (regression checks against the prior draft
+    # which left a back-symlink and skipped content rewrite):
+    assert "ANTI-PATTERN" in relocation  # back-symlink is documented as one
+    assert "content rewrite" in relocation.lower()
+    assert ".jsonl" in relocation  # Claude session content is named explicitly
+    # Phase 4 must demand grep-based content verification, not just `ls`
+    assert 'grep -rlI -F "$OLD"' in relocation
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
