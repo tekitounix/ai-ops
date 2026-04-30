@@ -60,6 +60,48 @@ def test_collect_signals_p0_for_secret_file(tmp_path: Path) -> None:
     assert s.priority == "P0"
 
 
+def test_p0_sec_routes_to_realign_when_managed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A managed project with secret-name files must surface a concrete
+    sub-flow, not no-op. Realignment owns the `.env` review step."""
+    _stub_home(monkeypatch, tmp_path)
+    p = _make_under_ghq(tmp_path, "github.com", "owner", "managed-with-env")
+    _git_init(p)
+    (p / "AGENTS.md").write_text("agents", encoding="utf-8")
+    (p / ".env").write_text("API_KEY=real\n", encoding="utf-8")
+    from ai_ops.audit.harness import HarnessManifest, _sha256
+    (p / ".ai-ops").mkdir()
+    m = HarnessManifest(
+        ai_ops_sha="",
+        harness_files={"AGENTS.md": _sha256(p / "AGENTS.md")},
+        last_sync="2026-04-30T00:00:00+00:00",
+    )
+    (p / ".ai-ops" / "harness.toml").write_text(m.to_toml(), encoding="utf-8")
+
+    s = projects.collect_signals(p)
+    assert s.sec >= 1
+    assert s.priority == "P0"
+    assert s.sub_flow == "realign"
+
+
+def test_p0_sec_routes_to_migrate_when_unmanaged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unmanaged project with secret-name files routes to migrate.
+    Migration is where the harness gets seeded; secret hygiene is part
+    of the same flow."""
+    _stub_home(monkeypatch, tmp_path)
+    p = _make_under_ghq(tmp_path, "github.com", "owner", "unmanaged-with-env")
+    _git_init(p)
+    (p / ".env").write_text("API_KEY=real\n", encoding="utf-8")
+
+    s = projects.collect_signals(p)
+    assert s.sec >= 1
+    assert s.priority == "P0"
+    assert s.sub_flow == "migrate"
+
+
 def test_collect_signals_excludes_env_template(tmp_path: Path) -> None:
     """`.env.example`, `.env.template`, etc. are placeholders, not secrets."""
     p = tmp_path / "proj"

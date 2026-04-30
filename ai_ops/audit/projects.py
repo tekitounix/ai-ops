@@ -342,10 +342,19 @@ def collect_signals(path: Path) -> ProjectSignals:
     # under ~/ghq/local/... that are intentionally unmanaged. ai-ops
     # itself (mgd=src) is never the target of a sub-flow regardless of
     # priority — it's the methodology source, not a consumer.
+    #
+    # `sec >= 1` is a P0 trigger but the previous logic returned no-op
+    # for it because the no-op fall-through caught managed projects with
+    # no other drift signal. Route secret-name P0 explicitly: realign for
+    # managed projects (the realign playbook covers `.env` review), or
+    # migrate for unmanaged ones (migration sets up the harness in the
+    # first place, so secret hygiene is part of that flow).
     if mgd == "src":
         sub_flow = "no-op"
     elif loc != "ok":
         sub_flow = "relocate"
+    elif sec >= 1:
+        sub_flow = "realign" if mgd == "yes" else "migrate"
     elif priority == "P2":
         sub_flow = "no-op"
     elif mgd == "yes" and (
