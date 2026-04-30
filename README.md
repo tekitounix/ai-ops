@@ -6,74 +6,75 @@
 
 **English** | [日本語](README.ja.md)
 
-A small Python CLI that lets AI coding agents (Claude Code, Codex, Cursor, ...) propose project setup decisions instead of using fixed templates. You describe your intent; the agent observes, drafts a structured Brief, you confirm, the agent executes.
-
-## Why
-
-The right shape for a project — its name, layout, stack, harness, and check command — depends on what the project actually is. AI agents can reason about that case by case rather than copy-pasting from a fixed template. ai-ops gives them the framework: read context, draft a Brief (Fact / Inference / Risk / User decision / AI recommendation), wait for human confirmation, then execute with normal tools.
+ai-ops lets AI coding agents (Claude Code, Codex, Cursor, …) decide how to set up, migrate, and audit your projects — instead of running fixed templates. You describe your intent; the agent reads context, drafts a structured plan, you confirm, the agent executes with normal tools.
 
 ## Quick start
 
-Hand one of these to an AI agent. The agent reads the repo for the rest.
+Hand one of these prompts to an AI agent. The agent reads this repo for the rest.
 
 ```text
 Per github.com/tekitounix/ai-ops, set up a new project for "<purpose>".
 ```
+**Greenfield work.** The agent drafts a target shape (name, repo location under `~/ghq/...`, stack, check command), proposes it, and only creates files after your confirmation.
 
 ```text
 Per github.com/tekitounix/ai-ops, align this project.
 ```
+**A single working tree.** The agent inspects the cwd read-only and decides which sub-flow applies — *migrate* (not yet ai-ops-managed), *realign* (managed but drifted), *relocate* (path is outside `~/ghq/...`), or *no action needed* — then asks per scope before editing anything.
 
 ```text
 Per github.com/tekitounix/ai-ops, audit my projects.
 ```
+**Every ghq-tracked project at once.** The agent walks `ghq list -p`, scores each project on eight signals, and emits a priority-sorted list. Action stays per-project: each P0 / P1 finding routes into the matching sub-flow with its own confirmation. P2 rows are observation only. Full procedure: [`docs/projects-audit.md`](docs/projects-audit.md).
 
-The first prompt is for greenfield work: only `<purpose>` needs to come from you, since the agent has no working tree to read. It drafts an 11-section Brief (name, repo placement under `~/ghq/...`, tier, stack, check command), proposes the target shape, and only creates files after your confirmation.
-
-The second prompt is the single entry point for any existing working tree. The agent inspects the cwd read-only and decides which sub-flow applies — migrate (not yet ai-ops-managed), realign (managed but drifted), relocate (path is outside `~/ghq/...`), or report "no action needed" — then waits for per-scope confirmation before editing.
-
-The third prompt sweeps every ghq-tracked project at once. The agent walks `ghq list -p`, collects per-project signals (managed status, nix gap, secret-name files, location drift, recency, dirty state, TODO churn), and emits a priority-sorted Audit Brief. Action is still per-project: each P0 / P1 entry routes into the appropriate sub-flow (relocate / migrate / realign) with its own confirmation. P2 rows are observation only.
-
-If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
+If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to print the prompt without invoking another agent.
 
 ## Install
 
 ```sh
-# Nix (no install required)
+# Nix
 nix run github:tekitounix/ai-ops -- --help
 
-# pip (editable install from clone)
+# pip (editable from a clone)
 git clone https://github.com/tekitounix/ai-ops
 cd ai-ops && pip install -e .
 
-# from source without install
+# from source, no install
 git clone https://github.com/tekitounix/ai-ops
 cd ai-ops && python -m ai_ops --help
 ```
 
-Requires Python 3.11+. Zero runtime dependencies (stdlib only).
+Requires Python 3.11+. No runtime dependencies (stdlib only).
 
-## Commands
+## What an "ai-ops project" looks like
+
+ai-ops doesn't ship a fixed template, but the prompts above expect a small set of conventions so they can reason consistently:
+
+- **Live under `~/ghq/<host>/<owner>/<repo>/`** (`ghq` for repo placement). That's where `audit my projects` looks.
+- **`AGENTS.md` at the project root** — the agent's operating contract: what to do, what not to do, what counts as "done". The Quick start prompts read this repo's `AGENTS.md` as the cross-project source of truth.
+- **`flake.nix` for projects with a stack** (Node / Python / Rust / Go / xmake / DSL). Reproducible dev env via Nix. Docs-only projects opt out via the per-project rubric (see `docs/decisions/0005-...`).
+- **`.ai-ops/harness.toml`** (optional manifest the audit uses to detect drift between this repo's spec and your project). Seed it with `ai-ops migrate <path> --update-harness`; without it, the audit shows the project as "unmanaged".
+
+## CLI
 
 | Command | Purpose |
 |---|---|
-| `ai-ops new <name> --purpose "..."` | Assemble prompt + Brief draft for a new project |
-| `ai-ops migrate <path>` | Read-only discovery + Brief for migrating an existing project |
-| `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` to an existing managed project |
-| `ai-ops bootstrap [--tier {1,2}]` | Survey required tools (git, ghq, direnv, jq, gh, nix; +shellcheck/actionlint/gitleaks/fzf/rg) and install missing ones with user confirmation. Default `--tier 1` (required only) |
-| `ai-ops update [--tier {1,2}]` | Survey present tools and update them with user confirmation. Default `--tier 2` (required + recommended) |
-| `ai-ops audit {lifecycle,nix,security,harness,standard,projects}` | Self-audit (`lifecycle` is for ai-ops itself; `security` works in any repo; `projects` walks all ghq-tracked projects) |
-| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | Walk `ghq list -p`, score each project on 8 signals, emit a priority-sorted table (`--json` for machine output). Exit 1 if any P0/P1 remains — usable from cron / CI |
-| `ai-ops audit nix --report` | Walk `ghq list -p` and print a Nix-gap table for every project |
-| `ai-ops audit nix --propose <path>` | Emit a Markdown retrofit proposal for one project |
-| `ai-ops audit harness [--path PATH] [--strict]` | Detect harness drift (`.ai-ops/harness.toml` vs actual file hashes). Default treats manifest absence as a non-blocking warning so the audit can run across pre-adoption repos; `--strict` makes manifest absence a failure |
-| `ai-ops audit standard --since REF` | Detect ADR (docs/decisions/) changes since a reference for propagation |
+| `ai-ops new <name> --purpose "..."` | Build prompt + draft plan for a new project |
+| `ai-ops migrate <path>` | Read-only discovery + plan for migrating an existing project |
+| `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` only |
+| `ai-ops migrate <path> --update-harness` | Narrow scope: refresh `.ai-ops/harness.toml` |
+| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | Score every ghq-tracked project on 8 signals; priority-sorted table or JSON. Exit 1 on any P0/P1 — usable from cron / CI |
+| `ai-ops audit nix [--report] [--propose <path>]` | Per-project Nix audit; `--report` walks every project; `--propose` emits a Markdown retrofit plan |
+| `ai-ops audit harness [--path PATH] [--strict]` | Detect drift between `.ai-ops/harness.toml` and actual file hashes |
+| `ai-ops audit standard --since REF` | Detect ADR (`docs/decisions/`) changes since a reference, for propagation |
+| `ai-ops audit security` | Secret scan (works in any repo) |
+| `ai-ops audit lifecycle` | Self-audit for ai-ops itself |
 | `ai-ops check` | All audits + pytest |
-| `ai-ops promote-plan <slug> [--source PATH]` | Promote a user-selected local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
+| `ai-ops bootstrap [--tier {1,2}]` | Install missing required tools after confirmation. Default `--tier 1` (required); `--tier 2` adds recommended |
+| `ai-ops update [--tier {1,2}]` | Update present tools after confirmation. Default `--tier 2` |
+| `ai-ops promote-plan <slug> [--source PATH]` | Promote a local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
 
-Each command reads `templates/` from this repo, embeds `AGENTS.md` as the operating rules, and either prints the prompt or invokes a configured AI agent.
-
-`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}`, `--nix {auto,none,devshell,apps,full}` (default `auto` = AI agent decides via per-project rubric, ADR 0005), `--output <path>`, `--dry-run`, `--interactive`. `migrate` also supports `--retrofit-nix` (Nix-only narrow scope) and `--update-harness` (harness drift remediation, Phase 8-B).
+`new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}` (T1 public / T2 private / T3 local), `--nix {auto,none,devshell,apps,full}` (default `auto`: AI decides via per-project rubric), `--output <path>`, `--dry-run`, `--interactive`.
 
 ## Configuration
 
@@ -90,31 +91,21 @@ command = ["claude", "-p", "--no-session-persistence", "--tools", ""]
 command = ["codex", "exec", "-m", "gpt-5.2", "--sandbox", "read-only", "-"]
 ```
 
-CLI flag `--agent <name>` overrides config. Built-in defaults work without any config file.
+`--agent <name>` overrides config. Built-in defaults work without any config file.
 
-## Roles
+## Verification
 
-```text
-AI agent: project-specific judgment, proposals, post-approval execution
-User: visibility, secret boundaries, long-term decisions
-Python CLI: discovery, prompt assembly, agent invocation, check / audit, tool bootstrap
-Nix: default-required reproducibility layer (stack-aware, per-project rubric, ADR 0005 amended)
-Git: history and recovery; in-repo archive is usually unnecessary
+```sh
+python -m ai_ops check                # everything
+python -m ai_ops audit security       # secret scan only
+direnv exec . sh -c '
+set -e
+nix flake check --all-systems --no-build
+nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
+'
 ```
 
-This repo is not a *silent* installer. It does not modify user shells, global git config, OS schedulers, or AI tool user configs without confirmation. `ai-ops bootstrap` / `ai-ops update` install or upgrade required tools only after explicit user approval (Operation Model: Propose → Confirm → Execute).
-
-## Concepts
-
-- **Lifecycle (8-step)**: Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt. See [docs/ai-first-lifecycle.md](docs/ai-first-lifecycle.md).
-- **Brief**: 11-section structured proposal the AI fills before execution. See [templates/](templates/).
-- **Execution plan**: optional living plan for non-trivial execution work under `docs/plans/<slug>/plan.md`, using [templates/plan.md](templates/plan.md).
-- **Self-operation**: how ai-ops dogfoods its own lifecycle, release gate, file hygiene, and drift review. See [docs/self-operation.md](docs/self-operation.md).
-- **Realignment**: how an already-running project that has drifted from its operational ideal is brought back. Read-only Discovery -> Realignment Brief -> per-scope Execute on confirmation. See [docs/realignment.md](docs/realignment.md).
-- **Projects audit**: how every ghq-tracked project is surveyed at once. The priority-sorted Audit Brief routes each P0 / P1 finding into the matching sub-flow with per-project confirmation. See [docs/projects-audit.md](docs/projects-audit.md).
-- **Tier**: T1 public / T2 private / T3 local / OFF (PII). See [docs/project-addition-and-migration.md](docs/project-addition-and-migration.md).
-- **Operation Model**: Propose → Confirm → Execute for destructive or cross-cutting changes. Defined in [AGENTS.md](AGENTS.md).
-- **Multi-agent**: parallel sessions use `claude --worktree` or Codex's built-in worktree. See AGENTS.md "Multi-agent".
+Nix is the **default-required** project-level reproducibility layer (per-project rubric, ADR 0005). `python -m ai_ops check` works without Nix as a bootstrap fallback, but stack-bearing projects fail `audit nix` until `flake.nix` is in place or an explicit opt-out justification is recorded in the project's brief.
 
 ## Layout
 
@@ -124,31 +115,16 @@ pyproject.toml  flake.nix
 ai_ops/        Python CLI source
 tests/         pytest
 docs/
-  ai-first-lifecycle.md
+  ai-first-lifecycle.md       canonical workflow (Intake → Discovery → Brief → Confirm → Execute → Verify → Adopt)
   project-addition-and-migration.md
-  realignment.md
-  projects-audit.md
-  self-operation.md
-  decisions/   ADR 0001-0008
-  plans/       active execution plans + archive
-templates/     project-brief / migration-brief / agent-handoff / plan
+  realignment.md              correcting an existing project that has drifted
+  project-relocation.md       moving from outside `~/ghq/` into `~/ghq/`
+  projects-audit.md           the "audit my projects" playbook
+  self-operation.md           how ai-ops dogfoods itself
+  decisions/                  ADRs 0001-0008
+  plans/                      active execution plans + archive
+templates/                    project / migration / handoff / execution-plan templates
 ```
-
-Old pre-Phase-9 plans, legacy scripts, and obsolete templates are not in the active tree. Refer to or restore them from Git history when needed.
-
-## Verification
-
-```sh
-python -m ai_ops check                # all-in-one
-python -m ai_ops audit security       # secret scan only
-direnv exec . sh -c '
-set -e
-nix flake check --all-systems --no-build
-nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).all"
-'
-```
-
-Nix is **default-required** as the project-level reproducibility layer (per-project rubric, ADR 0005 amended). `python -m ai_ops check` runs without Nix as a bootstrap fallback, but stack-bearing projects (Node / Python / Rust / Go / xmake / DSL) fail `ai-ops audit nix` until a `flake.nix` is in place or an explicit opt-out justification is recorded in the brief.
 
 ## License
 
