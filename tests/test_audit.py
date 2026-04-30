@@ -224,6 +224,13 @@ def test_align_prompt_chain_reaches_relocation_playbook() -> None:
     assert "Recovery (partial migration)" in relocation
     assert "tr './'" in relocation  # documents the v2 sanitize formula
     assert "realpath" in relocation
+    # Lessons from the first real-world recovery run (case study after e2f5367):
+    # rewrite must cover non-jsonl text files, glob invariants must be
+    # explicit, and fragment names must strip Claude's leading dash.
+    for ext_glob in ('"*.jsonl"', '"*.md"', '"*.json"', '"*.txt"'):
+        assert ext_glob in relocation, f"rewrite scope missing pattern {ext_glob}"
+    assert "INVARIANT:" in relocation  # Step 3.1 / 3.2 mis-implementation guards
+    assert "${source_hash#-}" in relocation  # leading-dash strip in fragment naming
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:

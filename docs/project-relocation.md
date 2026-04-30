@@ -1,6 +1,8 @@
 # Project Physical Relocation
 
 > Scope: move an existing project from outside `~/ghq/` (e.g. `~/work/<repo>`, `~/Documents/<repo>`) into `~/ghq/<host>/<owner>/<repo>/` while keeping AI session history, IDE workspace state, and build environment functional. **Full migration**: every reference to the old path is severed (no back-symlink, no baked-in cwd in chat history, no orphaned IDE storage).
+>
+> Status: end-to-end recovery validated against a 3-way split (`HASH_OLD` symlink fragment + `HASH_NEW_V1` dot-preserving sanitize + `HASH_NEW_V2` dot-replacing sanitize) — Claude session merge, VS Code chat-state rsync, and Phase 4 grep-zero criteria all passed. The orchestrated in-session path (`AI_OPS_MIGRATION_IN_PROGRESS=1`) remains exercised only in dry-run; record real-world signal here when it occurs.
 
 This playbook covers three scenarios:
 
@@ -193,7 +195,13 @@ The narrow exception is a short transition window where IDE workspace migration 
 ```sh
 NEW_DIR="$HOME/.claude/projects/$NEW_HASH"
 
-# 3.1 rename / merge old hash directories into the new-hash directory
+# 3.1 rename / merge old hash directories into the new-hash directory.
+#
+# INVARIANT: `cp -an "$src"/*` copies *every* entry, not just `*.jsonl`.
+# Per-session UUID-named subdirectories, `memory/`, `tool-results/`, and any
+# other top-level entries must move together with their sibling jsonls.
+# A naive `*.jsonl` filter silently drops them and the next session loses
+# its conversation memory and tool-result cache.
 mkdir -p "$NEW_DIR"
 for h in "$HASH_V2" "$HASH_V1"; do
     src="$HOME/.claude/projects/$h"
@@ -206,11 +214,25 @@ done
 ```sh
 # 3.2 content rewrite — literal replacement, regex-safe even if $OLD or $NEW
 #     contain `.`, `[`, `\`, `&`, etc. Backup was taken in Phase 1.
+#
+# INVARIANT: `**/*.<ext>` with recursive=True scans per-session subdirs too,
+# not just the top-level files; a `*.<ext>` glob (no `**`) silently misses
+# anything below `<NEW_DIR>/<uuid>/`. Extensions cover every text format
+# Claude Code persists today: `.jsonl` (sessions, the bulk), `.md`
+# (`memory/MEMORY.md` and any per-session notes), `.json` (metadata
+# sidecars), `.txt` (`tool-results/*.txt`). Binary formats (e.g. `.pdf`)
+# are out of scope here; if a tool starts persisting binary state, list
+# its layout in the substrate reference table and add a tool-specific
+# rewrite procedure.
 python3 - "$OLD" "$NEW" "$NEW_DIR" <<'PY'
 import glob, sys
 old, new, target = sys.argv[1], sys.argv[2], sys.argv[3]
+patterns = ("*.jsonl", "*.md", "*.json", "*.txt")
+paths: set[str] = set()
+for ext in patterns:
+    paths.update(glob.glob(f"{target}/**/{ext}", recursive=True))
 n_files = n_replacements = 0
-for path in sorted(glob.glob(f"{target}/**/*.jsonl", recursive=True)):
+for path in sorted(paths):
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
     if old in text:
@@ -364,7 +386,7 @@ Recovery uses the same four phases but replaces Step 2's straight `mv` with a **
 
 3. **Step 1 (Recovery)**: clean up `$OLD` fragment if present. If `$OLD` is a back-symlink, remove it (no `mv` needed; `$NEW` already holds the data).
 
-4. **Step 2 (Recovery — merge instead of move)**: for each session UUID found in more than one hash directory, choose the canonical copy (largest size or newest mtime is a sane default), keep it under `$NEW_HASH/<uuid>.jsonl`, and rename siblings to `<uuid>-fragment-<source-hash>.jsonl` so the user can audit them later. Unique files copy directly into `$NEW_HASH/`.
+4. **Step 2 (Recovery — merge instead of move)**: for each session UUID found in more than one hash directory, choose the canonical copy (largest size or newest mtime is a sane default), keep it under `$NEW_HASH/<uuid>.jsonl`, and rename siblings to `<uuid>-fragment-<source-hash-trimmed>.jsonl`. The `<source-hash-trimmed>` is `${source_hash#-}` — strip the leading `-` Claude prepends so the filename is `<uuid>-fragment-Users-foo-...jsonl`, not `<uuid>-fragment--Users-foo-...jsonl` (literal double-dash hurts readability and tooling that splits on `-`). Unique files copy directly into `$NEW_HASH/`.
 
 5. **Step 3 (Recovery)**: run Step 3.2 / 3.3 of the main flow against the merged `$NEW_DIR` and every text-based AI substrate. Binary stores (sqlite, leveldb) are left as-is; the OLD copy becomes the rollback artifact, the NEW copy continues fresh.
 
