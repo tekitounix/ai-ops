@@ -84,15 +84,67 @@ def test_collect_signals_p0_for_location_drift(tmp_path: Path) -> None:
 
 def test_collect_signals_skips_dependency_dirs_for_secrets(tmp_path: Path) -> None:
     """`.venv/.../.env` and `node_modules/.../.env` should not count toward
-    sec — they are vendored / generated, not the project's own secrets."""
+    sec — they are vendored / generated, not the project's own secrets.
+
+    Includes the third-party / external / deps / subprojects directories that
+    a real fleet audit caught producing false positives (STM32 + mbedTLS
+    test fixtures vendored under `third_party/`)."""
     p = tmp_path / "proj"
     p.mkdir()
     _git_init(p)
-    for d in (".venv", "node_modules", "vendor", "dist", "build"):
+    for d in (
+        ".venv", "node_modules", "vendor", "dist", "build",
+        "third_party", "third-party", "external", "deps", "subprojects",
+    ):
         (p / d).mkdir()
         (p / d / ".env").write_text("foo\n", encoding="utf-8")
+        (p / d / "test.pem").write_text("-----BEGIN-----\n", encoding="utf-8")
     s = fleet.collect_signals(p)
     assert s.sec == 0
+
+
+def test_collect_signals_skips_git_submodule_paths(tmp_path: Path) -> None:
+    """Files under git submodule paths are upstream's responsibility and
+    must not contribute to sec / drift counts."""
+    parent = tmp_path / "proj"
+    parent.mkdir()
+    _git_init(parent)
+    sub = tmp_path / "remote-sub"
+    sub.mkdir()
+    _git_init(sub)
+    # Add submodule
+    subprocess.run(
+        ["git", "-C", str(parent), "-c", "protocol.file.allow=always",
+         "submodule", "add", str(sub), "vendor-sub"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(parent), "commit", "-q", "-m", "add submodule"],
+        check=True,
+    )
+    # Drop a fake secret-name file inside the submodule (e.g. test fixture)
+    (parent / "vendor-sub" / "test.pem").write_text(
+        "-----BEGIN CERT-----\n", encoding="utf-8"
+    )
+    s = fleet.collect_signals(parent)
+    assert s.sec == 0
+
+
+def test_collect_signals_marks_ai_ops_repo_as_source_of_truth(tmp_path: Path) -> None:
+    """ai-ops itself (AGENTS.md + ai_ops/cli.py + docs/decisions/) is the
+    methodology source. It must not be flagged for `migrate` even though
+    it lacks `.ai-ops/harness.toml`."""
+    p = tmp_path / "ai-ops-clone"
+    p.mkdir()
+    _git_init(p)
+    (p / "AGENTS.md").write_text("# ai-ops\n", encoding="utf-8")
+    (p / "ai_ops").mkdir()
+    (p / "ai_ops" / "cli.py").write_text("def main(): pass\n", encoding="utf-8")
+    (p / "docs").mkdir()
+    (p / "docs" / "decisions").mkdir()
+    s = fleet.collect_signals(p)
+    assert s.mgd == "src"  # source-of-truth marker
+    assert s.sub_flow == "no-op"  # never recommend migrate against ai-ops itself
 
 
 # ─────────────────────────────────────────────────────
@@ -133,6 +185,23 @@ def test_p2_for_docs_only_project_under_ghq(
     assert s.is_docs_only is True
     assert s.nix == "n/a"
     assert s.priority == "P2"
+
+
+def test_p2_unmanaged_project_recommends_no_op_not_migrate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P2 means "no action needed". Validation / fixture / pure-docs repos
+    that happen to be unmanaged must NOT get a `migrate` recommendation —
+    that would contradict P2 and pollute the fleet view with noise."""
+    _stub_home(monkeypatch, tmp_path)
+    p = _make_under_ghq(tmp_path, "local", "owner", "fixture")
+    _git_init(p)
+    (p / "notes.md").write_text("# notes\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(p), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(p), "commit", "-q", "-m", "docs"], check=True)
+    s = fleet.collect_signals(p)
+    assert s.priority == "P2"
+    assert s.sub_flow == "no-op"  # not migrate
 
 
 def test_p2_for_clean_managed_project_under_ghq(

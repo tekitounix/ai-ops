@@ -35,15 +35,23 @@ ENV_TEMPLATE_SUFFIXES = frozenset({
     "example", "template", "sample", "dist", "default", "tmpl",
 })
 
-# `find`-style skip: directories that hold dependencies / build artifacts;
-# their content is third-party / generated and not part of the project's
-# own secret hygiene.
+# `find`-style skip: directories that hold dependencies / build artifacts /
+# vendored third-party trees; their content is not part of the project's
+# own secret hygiene. A first real-world fleet audit on a project with
+# STM32 + mbedTLS vendored under `third_party/` produced 193 false-positive
+# secret-name hits (TLS test fixtures), all from vendored content.
 SKIP_DIR_PARTS = frozenset({
+    # VCS / direnv / cache
     ".git", ".direnv", ".pytest_cache", "__pycache__", ".tox", ".eggs",
+    # Python virtual envs
     ".venv", "venv",
+    # Node
     "node_modules",
+    # Build / dependency / vendor trees
     "vendor", "target", "dist", "build", ".cache", ".next", ".gradle",
     "result", "bazel-out",
+    # Vendored third-party (Google / Chromium / firmware SDK conventions)
+    "third_party", "third-party", "external", "deps", "subprojects",
 })
 
 # Stack signals — used to decide whether `nix=missing` is a P1 trigger.
@@ -95,7 +103,35 @@ def _is_secret_name(name: str) -> bool:
     return any(p.search(name) for p in SECRET_NAME_PATTERNS)
 
 
+def _git_submodule_paths(path: Path) -> set[tuple[str, ...]]:
+    """Return submodule paths (relative to the project root) as tuples
+    of components, suitable for prefix-matching `Path.relative_to`.
+
+    Submodules are owned by their upstream repo; the consuming project is
+    not responsible for their secret hygiene or harness state.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "submodule", "status", "--recursive"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if result.returncode != 0:
+            return set()
+        paths: set[tuple[str, ...]] = set()
+        for line in result.stdout.splitlines():
+            # Format: " <sha> <path> (<branch>)" or "+<sha> <path> ..." etc.
+            parts = line.strip().split()
+            if len(parts) < 2:
+                continue
+            sub_rel = parts[1]
+            paths.add(tuple(sub_rel.split("/")))
+        return paths
+    except (subprocess.SubprocessError, OSError):
+        return set()
+
+
 def _count_secret_files(path: Path) -> int:
+    submodule_prefixes = _git_submodule_paths(path)
     n = 0
     try:
         for entry in path.rglob("*"):
@@ -103,7 +139,11 @@ def _count_secret_files(path: Path) -> int:
                 rel = entry.relative_to(path)
             except ValueError:
                 continue
-            if any(part in SKIP_DIR_PARTS for part in rel.parts):
+            parts = rel.parts
+            if any(p in SKIP_DIR_PARTS for p in parts):
+                continue
+            # Skip git submodules (their secret hygiene is upstream's responsibility).
+            if any(parts[: len(prefix)] == prefix for prefix in submodule_prefixes):
                 continue
             if not entry.is_file():
                 continue
@@ -222,10 +262,29 @@ def _under_ghq_root(path: Path) -> bool:
         return False
 
 
+def _is_ai_ops_repo(path: Path) -> bool:
+    """ai-ops itself is the source-of-truth repo for the methodology, not a
+    consumer that seeds `.ai-ops/harness.toml`. Detect by structural shape
+    (AGENTS.md + ai_ops/ Python package + docs/decisions ADR set) so the
+    fleet audit doesn't recommend `migrate` against ai-ops itself."""
+    return (
+        (path / "AGENTS.md").is_file()
+        and (path / "ai_ops" / "cli.py").is_file()
+        and (path / "docs" / "decisions").is_dir()
+    )
+
+
 def collect_signals(path: Path) -> FleetSignals:
     """Read-only signal collection for one project. Never writes."""
     loc = "ok" if _under_ghq_root(path) else "DRIFT"
-    mgd = "yes" if (path / HARNESS_MANIFEST).is_file() else "no"
+    if (path / HARNESS_MANIFEST).is_file():
+        mgd = "yes"
+    elif _is_ai_ops_repo(path):
+        # ai-ops itself is the methodology source — it does not seed a
+        # harness manifest because it *is* the harness.
+        mgd = "src"
+    else:
+        mgd = "no"
     flake_present = (path / "flake.nix").is_file()
 
     tracked = _git_ls_files(path)
@@ -263,7 +322,7 @@ def collect_signals(path: Path) -> FleetSignals:
     if loc != "ok" or sec >= 1:
         priority = "P0"
     elif (
-        (nix == "missing" and has_stack)
+        (mgd == "no" and nix == "missing" and has_stack)
         or (mgd == "yes" and harness_drift)
         or (
             age_days is not None
@@ -275,15 +334,26 @@ def collect_signals(path: Path) -> FleetSignals:
     else:
         priority = "P2"
 
-    # Sub-flow recommendation
-    if loc != "ok":
+    # Sub-flow recommendation.
+    #
+    # Intent: P2 means "no action needed this cycle". Recommending a
+    # destructive sub-flow (migrate / realign) for a P2 row would
+    # contradict the priority — especially for validation / fixture repos
+    # under ~/ghq/local/... that are intentionally unmanaged. ai-ops
+    # itself (mgd=src) is never the target of a sub-flow regardless of
+    # priority — it's the methodology source, not a consumer.
+    if mgd == "src":
+        sub_flow = "no-op"
+    elif loc != "ok":
         sub_flow = "relocate"
-    elif mgd == "no" and (has_stack or not docs_only):
-        sub_flow = "migrate"
+    elif priority == "P2":
+        sub_flow = "no-op"
     elif mgd == "yes" and (
         (nix == "missing" and has_stack) or harness_drift
     ):
         sub_flow = "realign"
+    elif mgd == "no" and (has_stack or not docs_only):
+        sub_flow = "migrate"
     else:
         sub_flow = "no-op"
 
@@ -345,10 +415,10 @@ def _shorten_path(path: Path, width: int = 50) -> str:
 
 def _print_table(signals_list: list[FleetSignals]) -> None:
     cols = (
-        ("project", 24),
-        ("path", 50),
+        ("project", 28),
+        ("path", 52),
         ("loc", 5),
-        ("mgd", 3),
+        ("mgd", 4),
         ("nix", 7),
         ("sec", 3),
         ("dirty", 5),
@@ -361,18 +431,18 @@ def _print_table(signals_list: list[FleetSignals]) -> None:
     print(header)
     print("-" * len(header))
     for s in signals_list:
-        proj = (s.project[:21] + "...") if len(s.project) > 24 else s.project
-        path_short = _shorten_path(s.path)
+        proj = (s.project[:25] + "...") if len(s.project) > 28 else s.project
+        path_short = _shorten_path(s.path, width=52)
         last = (
             s.last_commit_human[:11] + "..."
             if len(s.last_commit_human) > 14
             else s.last_commit_human
         )
         row = (
-            f"{proj:<24} "
-            f"{path_short:<50} "
+            f"{proj:<28} "
+            f"{path_short:<52} "
             f"{s.loc:<5} "
-            f"{s.mgd:<3} "
+            f"{s.mgd:<4} "
             f"{s.nix:<7} "
             f"{s.sec:>3} "
             f"{s.dirty:>5} "
