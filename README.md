@@ -14,25 +14,19 @@ Templates like cookiecutter / copier / yeoman freeze decisions before a project 
 
 ## Quick start
 
-Hand any of these to an AI agent. The agent reads the repo for the rest.
+Hand one of these to an AI agent. The agent reads the repo for the rest.
 
 ```text
-Per github.com/tekitounix/ai-ops, set up a new project for "<what you want>".
+Per github.com/tekitounix/ai-ops, set up a new project for "<purpose>".
 ```
 
 ```text
-Per github.com/tekitounix/ai-ops, create <project-name> for "<one-line-purpose>".
+Per github.com/tekitounix/ai-ops, align this project.
 ```
 
-```text
-Per github.com/tekitounix/ai-ops, migrate <source-path>.
-```
+The first prompt is for greenfield work: only `<purpose>` needs to come from you, since the agent has no working tree to read. It drafts an 11-section Brief (name, repo placement under `~/ghq/...`, tier, stack, check command), proposes the target shape, and only creates files after your confirmation.
 
-```text
-Per github.com/tekitounix/ai-ops, realign this project.
-```
-
-The agent reads this repo, discovers your environment (`git config --get ghq.user`, OS, ...), drafts an 11-section Brief, proposes a target shape (name, repo placement under `~/ghq/...`, tier, stack, check command), waits for your confirmation, and only then creates / migrates files. The realignment prompt is for projects that already exist but have drifted from their operational ideal — the agent inspects the project read-only, emits a Realignment Brief grouped by reversibility (P0 doc-only / P1 structural / P2 behavioral), and waits for per-scope confirmation before editing.
+The second prompt is the single entry point for any existing working tree. The agent inspects the cwd read-only and decides which sub-flow applies — migrate (not yet ai-ops-managed), realign (managed but drifted), relocate (path is outside `~/ghq/...`), or report "no action needed" — then waits for per-scope confirmation before editing.
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to get prompt / brief / discovery output only.
 

@@ -12,6 +12,7 @@
 - check / audit / CI が落ちる、または当該プロジェクトに「release-ready の定義」が無い。
 - harness、設定、ADR の決定が実装まで伝播していない。
 - 役割境界 (AI / user / CLI) が現状と一致していない。
+- repo の物理 location が `~/ghq/<host>/<owner>/<repo>/` 外にある (e.g. `~/work/`, `~/Documents/`)。 物理移行手順は [docs/project-relocation.md](project-relocation.md) に従う。
 
 ## Operating Model
 
@@ -38,6 +39,10 @@ git ls-files
 git log --since="6 months ago" --oneline | head -50
 rg -n --hidden -g '!.git' -e 'TODO|FIXME|TBD|WIP|not implemented|coming soon' .
 find docs -maxdepth 3 -type f 2>/dev/null
+
+# repo physical location が ghq 配下か確認
+# (ghq 外なら relocation drift signal、playbook は project-relocation.md)
+realpath . | grep -q "^$HOME/ghq/" && echo "ghq compliant" || echo "DRIFT: not under ~/ghq/"
 ```
 
 `ai-ops` CLI が install 済みなら次も走らせる (任意 cwd で動作する)。

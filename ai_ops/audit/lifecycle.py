@@ -14,6 +14,7 @@ REQUIRED_FILES = (
     "AGENTS.md",
     "docs/ai-first-lifecycle.md",
     "docs/project-addition-and-migration.md",
+    "docs/project-relocation.md",
     "docs/realignment.md",
     "docs/self-operation.md",
     "docs/decisions/0007-python-canonical-cli.md",

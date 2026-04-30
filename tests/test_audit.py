@@ -182,7 +182,31 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     assert "templates/artifacts/update-flake-lock.yml" in REQUIRED_FILES
     assert "templates/plan.md" in REQUIRED_FILES
     assert "docs/decisions/0008-plan-persistence.md" in REQUIRED_FILES
+    assert "docs/project-relocation.md" in REQUIRED_FILES
     assert "docs/realignment.md" in REQUIRED_FILES
+
+
+def test_align_prompt_chain_reaches_relocation_playbook() -> None:
+    """The single `align this project` Quick start prompt must lead an agent
+    to the relocation playbook through static doc references — without the
+    chain, an AI looking at a non-ghq path cannot find the right procedure."""
+    repo = Path(__file__).resolve().parents[1]
+
+    readme = (repo / "README.md").read_text(encoding="utf-8")
+    assert "align this project" in readme
+    assert "relocate" in readme.lower()
+
+    agents_md = (repo / "AGENTS.md").read_text(encoding="utf-8")
+    assert "docs/project-relocation.md" in agents_md
+    assert "project physical relocation" in agents_md.lower()
+
+    realign = (repo / "docs" / "realignment.md").read_text(encoding="utf-8")
+    assert "project-relocation.md" in realign
+    assert "~/ghq/" in realign
+
+    relocation = (repo / "docs" / "project-relocation.md").read_text(encoding="utf-8")
+    assert "Phase 1" in relocation and "Phase 4" in relocation
+    assert ".claude/projects" in relocation  # AI substrate handling documented
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:

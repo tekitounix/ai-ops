@@ -98,7 +98,7 @@ T3 → T2 → T1 への昇格は destructive / visibility change なので Propo
 gh repo create <owner>/<repo> --private --source=. --remote=origin --push
 ```
 
-repo 配置を `~/ghq/local/.../<repo>` から `~/ghq/github.com/<owner>/<repo>` に move する場合は、`mv` 後に `git remote -v` で確認する。
+repo 配置を `~/ghq/local/.../<repo>` から `~/ghq/github.com/<owner>/<repo>` に move する場合は、`mv` 後に `git remote -v` で確認する。 ghq 外 (`~/work/...` 等) からの本格的な物理移行 (AI session / IDE state を含む) は [docs/project-relocation.md](project-relocation.md) を使う。
 
 ### T2 → T1 (private から public へ)
 

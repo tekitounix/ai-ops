@@ -26,7 +26,10 @@ Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -
 - Canonical workflow: `docs/ai-first-lifecycle.md`.
 - Detailed guide: `docs/project-addition-and-migration.md`.
 - Realignment (already-running, drifted projects): `docs/realignment.md`.
+- Project physical relocation (`~/work/...` → `~/ghq/...`): `docs/project-relocation.md`.
 - Self-operation: `docs/self-operation.md`.
+
+The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow.
 
 ## Plans
 
@@ -69,6 +72,7 @@ Use Propose -> Confirm -> Execute for:
 - visibility changes
 - cross-cutting edits
 - project-specific harness overwrite
+- project physical relocation (e.g. `~/work/<repo>` → `~/ghq/<host>/<owner>/<repo>`) — see `docs/project-relocation.md`
 
 One proposal requires one confirmation. Batch approval, meaning several distinct operations under a single y/N, is forbidden. Multiple steps inside a single operation may share one confirmation when they are presented together up front (e.g. `ai-ops bootstrap` showing the full list of missing tools before asking once to install them all). Read-only commands and local tests do not need confirmation.
 
