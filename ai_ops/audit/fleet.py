@@ -212,8 +212,14 @@ def _has_stack_markers(tracked: list[str]) -> bool:
 
 
 def _under_ghq_root(path: Path) -> bool:
-    home = str(Path.home())
-    return str(path).startswith(f"{home}/ghq/")
+    """True iff `path` is anywhere under `~/ghq/`. Path-based comparison so
+    POSIX `/` and Windows `\\` separators both work."""
+    ghq_root = Path.home() / "ghq"
+    try:
+        path.resolve().relative_to(ghq_root.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
 
 
 def collect_signals(path: Path) -> FleetSignals:
