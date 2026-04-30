@@ -216,6 +216,14 @@ def test_align_prompt_chain_reaches_relocation_playbook() -> None:
     assert ".jsonl" in relocation  # Claude session content is named explicitly
     # Phase 4 must demand grep-based content verification, not just `ls`
     assert 'grep -rlI -F "$OLD"' in relocation
+    # Multi-version hash drift, IDE workspace storage, in-session and recovery
+    # support — the four protocol gaps closed by the latest review.
+    assert "HASH_V1" in relocation and "HASH_V2" in relocation
+    assert "workspaceStorage" in relocation  # VS Code / Cursor migration covered
+    assert "In-session migration" in relocation  # cwd self-protection covered
+    assert "Recovery (partial migration)" in relocation
+    assert "tr './'" in relocation  # documents the v2 sanitize formula
+    assert "realpath" in relocation
 
 
 def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
