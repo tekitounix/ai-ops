@@ -85,7 +85,7 @@ def draft_project_brief(spec: ProjectSpec) -> str:
 - AI must not edit: user environment files
 - Required checks before reporting done: ai-ops check
 - Destructive operations policy: Propose -> Confirm -> Execute
-- Language strategy (code / docs / public-facing): English by default; record project-specific exceptions
+- Language strategy (code / docs / public-facing): code identifiers, commits, branch/tag names, LICENSE, and README.md default to English; operating docs, AGENTS.md, issues, PRs, briefs, and plans default to Japanese unless the brief records a different language policy; add English docs beyond README only when public importance justifies the maintenance cost
 
 ## 8. Initial Files
 

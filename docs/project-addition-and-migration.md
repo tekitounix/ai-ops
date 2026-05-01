@@ -108,7 +108,7 @@ ai-ops 自身が 2026-04-27 に T2 → T1 した手順を playbook 化:
 2. **Secret 残存 grep**: 個人 email、private project 名、`/Users/<name>` 等の hardcoded path、商業ベンダー名を **全 history** で grep
 3. **必要なら history rewrite**: 残存があれば backup branch 作成 → orphan branch + 新規 single commit → `git push --force-with-lease`
 4. **LICENSE 追加**: MIT / Apache-2.0 / BSD-3 等
-5. **README 英語化**: `README.md` を英訳、現主言語版を `README.<locale>.md` に rename (sibling pattern)。各ファイル冒頭に language selector を 1 行
+5. **Public docs 整備**: `README.md` は英語の public first entrypoint にする。既存の主言語版が日本語なら `README.ja.md` に置き、各 README 冒頭に language selector を 1 行置く。README 以外の英語 docs は、完成度・公開目的・外部 contributor / user の重要度に応じて追加する
 6. **CI 整備**: GitHub Actions でテスト・audit を自動化
 7. **`pyproject.toml` / package metadata**: `license` field、`description`、topics 設定
 8. **Visibility flip**: `gh repo edit <owner>/<repo> --visibility public --accept-visibility-change-consequences`
