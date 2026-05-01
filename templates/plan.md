@@ -27,6 +27,24 @@ Explain what someone can do after this change that they could not do before. Sta
 
 TBD. At completion, summarize what shipped, what remains, and what should change in future plans.
 
+## Improvement Candidates
+
+Capture each non-obvious learning that could improve future operation. Triage before completion: adopt the high-value ones into durable artifacts (docs / ADR / templates / audit / harness / tests), defer the rest with a reason. Cross-cutting or destructive adoption requires Propose -> Confirm -> Execute (see `AGENTS.md` Operation Model). If nothing surfaced this pass, write `### (none this pass)`.
+
+### <candidate name>
+
+- Observation: <fact learned during the work>
+- Evidence: <file / command / output reference>
+- Recommended adoption target: <current-plan | durable-doc | adr | template | audit | harness | test | deferred | rejected>
+- Confirmation needed: <yes | no> — <reason>
+- Verification: <how adoption will be checked / `n/a`>
+- Disposition: <open | adopted | deferred | rejected | superseded> — <short reason or reference>
+
+Enum reference:
+
+- `Recommended adoption target` — `current-plan` (in-plan fix), `durable-doc` (`docs/`), `adr` (`docs/decisions/`), `template` (`templates/`), `audit`/`harness`/`test` (matching module), `deferred` (not this pass), `rejected` (will not adopt).
+- `Disposition` — `open` (undecided), `adopted` (record adoption commit / PR in `Verification`), `deferred` (reason required), `rejected` (reason required), `superseded` (reference to replacement plan / candidate required).
+
 ## Context and Orientation
 
 Describe the current state relevant to this task as if the reader has only the current working tree and this plan. Name repository-relative files and commands. Define any non-obvious terms.

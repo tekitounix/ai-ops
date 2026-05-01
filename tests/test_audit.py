@@ -293,6 +293,68 @@ def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
     assert any("active for >30 days" in warning for warning in warnings)
 
 
+def test_lifecycle_audit_warns_when_improvement_candidates_section_missing(
+    tmp_path: Path,
+) -> None:
+    """Plan without `## Improvement Candidates` heading is flagged."""
+    from ai_ops.audit.lifecycle import _check_plan_hygiene
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "# Feature\n\n"
+        "## Progress\n\n- [x] step\n\n"
+        "## Outcomes & Retrospective\n\nShipped X.\n",
+        encoding="utf-8",
+    )
+
+    warnings = _check_plan_hygiene(tmp_path)
+    assert any(
+        "missing '## Improvement Candidates' section" in w for w in warnings
+    )
+
+
+def test_lifecycle_audit_warns_when_progress_complete_but_outcomes_tbd(
+    tmp_path: Path,
+) -> None:
+    """Progress 全 [x] かつ Outcomes が TBD のままは archive 寸前の取りこぼし signal."""
+    from ai_ops.audit.lifecycle import _check_plan_hygiene
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "# Feature\n\n"
+        "## Progress\n\n- [x] one\n- [x] two\n\n"
+        "## Outcomes & Retrospective\n\nTBD.\n\n"
+        "## Improvement Candidates\n\n### (none this pass)\n",
+        encoding="utf-8",
+    )
+
+    warnings = _check_plan_hygiene(tmp_path)
+    assert any(
+        "Outcomes & Retrospective' is still TBD" in w for w in warnings
+    )
+
+
+def test_lifecycle_audit_does_not_warn_when_outcomes_filled(tmp_path: Path) -> None:
+    """Healthy plan: Progress complete, Outcomes filled, Improvement Candidates present."""
+    from ai_ops.audit.lifecycle import _check_plan_hygiene
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "# Feature\n\n"
+        "## Progress\n\n- [x] step\n\n"
+        "## Outcomes & Retrospective\n\nShipped X. Retrospective notes here.\n\n"
+        "## Improvement Candidates\n\n### (none this pass)\n",
+        encoding="utf-8",
+    )
+
+    warnings = _check_plan_hygiene(tmp_path)
+    assert not any("Outcomes & Retrospective" in w for w in warnings)
+    assert not any("Improvement Candidates" in w for w in warnings)
+
+
 def test_plan_age_prefers_git_log_over_mtime(tmp_path: Path) -> None:
     """When the plan is tracked in git, _plan_age uses commit time, not mtime.
 
@@ -536,3 +598,36 @@ def test_security_audit_skips_value_scan_in_dependency_dirs(tmp_path: Path) -> N
         d.mkdir()
         (d / "fixture.txt").write_text(_FAKE_AWS_KEY + "\n", encoding="utf-8")
     assert run_security_audit(tmp_path) == 0
+
+
+def test_plan_template_and_promoted_plan_share_top_level_headings() -> None:
+    """templates/plan.md と build_promoted_plan の出力は同じ top-level 見出し集合を持つ。
+
+    `build_promoted_plan` は promote-plan 専用の独立 generator (templates/plan.md の
+    fallback ではない) だが、両者を「同じ schema」として扱う以上、top-level 見出し
+    の集合は一致しなければならない。drift すると、promote 経由で作られた plan が
+    `_check_plan_hygiene` の WARN 条件 (Improvement Candidates 欠如等) に違反する。
+    """
+    import re as _re
+
+    from ai_ops.lifecycle.plans import build_promoted_plan
+    from ai_ops.paths import package_root
+
+    template_text = (package_root() / "templates" / "plan.md").read_text(encoding="utf-8")
+    promoted_text = build_promoted_plan(
+        slug="example",
+        source_path=Path("/tmp/example.md"),
+        source_text="dummy source content",
+    )
+
+    def _h2_set(text: str) -> set[str]:
+        return {m.group(1).strip() for m in _re.finditer(r"(?m)^##\s+(.+?)\s*$", text)}
+
+    template_headings = _h2_set(template_text)
+    promoted_headings = _h2_set(promoted_text)
+
+    assert template_headings == promoted_headings, (
+        f"schema drift between templates/plan.md and build_promoted_plan: "
+        f"only-in-template={template_headings - promoted_headings}, "
+        f"only-in-promoted={promoted_headings - template_headings}"
+    )

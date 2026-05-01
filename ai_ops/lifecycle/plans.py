@@ -62,6 +62,19 @@ Promote a user-local AI plan into a repo-local, tool-agnostic execution plan so 
 
 TBD. At completion, summarize what shipped, what remains, and whether the promoted source plan was accurate enough to guide execution.
 
+## Improvement Candidates
+
+Capture each non-obvious learning that could improve future operation. Triage before completion: adopt the high-value ones into durable artifacts (docs / ADR / templates / audit / harness / tests), defer the rest with a reason. Cross-cutting or destructive adoption requires Propose -> Confirm -> Execute. If nothing surfaced this pass, write `### (none this pass)`.
+
+### <candidate name>
+
+- Observation: <fact learned during the work>
+- Evidence: <file / command / output reference>
+- Recommended adoption target: <current-plan | durable-doc | adr | template | audit | harness | test | deferred | rejected>
+- Confirmation needed: <yes | no> — <reason>
+- Verification: <how adoption will be checked / `n/a`>
+- Disposition: <open | adopted | deferred | rejected | superseded> — <short reason or reference>
+
 ## Context and Orientation
 
 This plan was generated from a user-selected local AI plan. Treat the source content below as input material, not as already-approved repository policy. Re-read the current working tree before executing.

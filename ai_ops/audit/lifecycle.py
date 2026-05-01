@@ -226,6 +226,14 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
         if not _has_progress_checkbox(text):
             warnings.append(f"{rel} missing Progress checkbox")
 
+        if not _has_section(text, "Improvement Candidates"):
+            warnings.append(f"{rel} missing '## Improvement Candidates' section")
+
+        if _progress_complete(text) and _outcomes_still_tbd(text):
+            warnings.append(
+                f"{rel} Progress is complete but 'Outcomes & Retrospective' is still TBD"
+            )
+
         if _plan_age(plan, root, now_utc) > timedelta(days=PLAN_STALE_DAYS):
             warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without update")
     return warnings
@@ -236,6 +244,32 @@ def _has_progress_checkbox(text: str) -> bool:
     if not match:
         return False
     return bool(re.search(r"(?m)^\s*-\s*\[[ xX]\]", match.group(1)))
+
+
+def _has_section(text: str, heading: str) -> bool:
+    return bool(re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", text))
+
+
+def _progress_complete(text: str) -> bool:
+    match = re.search(r"(?ms)^## Progress\s*(.*?)(?=^## |\Z)", text)
+    if not match:
+        return False
+    body = match.group(1)
+    boxes = re.findall(r"(?m)^\s*-\s*\[([ xX])\]", body)
+    if not boxes:
+        return False
+    return all(box in ("x", "X") for box in boxes)
+
+
+def _outcomes_still_tbd(text: str) -> bool:
+    match = re.search(r"(?ms)^## Outcomes & Retrospective\s*(.*?)(?=^## |\Z)", text)
+    if not match:
+        return False
+    body = match.group(1).strip()
+    if not body:
+        return False
+    first_token = body.split(None, 1)[0].rstrip(".。")
+    return first_token.upper() == "TBD"
 
 
 def run_lifecycle_audit(root: Path) -> int:

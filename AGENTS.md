@@ -34,7 +34,9 @@ The README's second Quick start prompt (`align this project`) is one entry point
 
 ## Plans
 
-Use `docs/plans/<slug>/plan.md` for non-trivial execution-time plans that need handoff, multi-session continuity, or cross-agent review. Start from `templates/plan.md`, keep `Progress` / `Surprises & Discoveries` / `Decision Log` / `Outcomes & Retrospective` current, and archive completed plans under `docs/plans/archive/YYYY-MM-DD-<slug>/`. Do not store transient task state in `AGENTS.md`, and do not treat `~/.claude/plans/` or other user-local AI tool storage as canonical.
+Use `docs/plans/<slug>/plan.md` for non-trivial execution-time plans that need handoff, multi-session continuity, or cross-agent review. Start from `templates/plan.md`, keep `Progress` / `Surprises & Discoveries` / `Decision Log` / `Outcomes & Retrospective` / `Improvement Candidates` current, and archive completed plans under `docs/plans/archive/YYYY-MM-DD-<slug>/`. Do not store transient task state in `AGENTS.md`, and do not treat `~/.claude/plans/` or other user-local AI tool storage as canonical.
+
+Improvement capture loop (作業中の学びを durable 化する手順) は `docs/self-operation.md` と `docs/ai-first-lifecycle.md` を参照。
 
 `ai-ops` is the Python CLI: installed console script, `python -m ai_ops`, or `nix run github:<owner>/ai-ops -- ...`.
 
@@ -94,11 +96,13 @@ One proposal requires one confirmation. Batch approval, meaning several distinct
 Default policy:
 
 - Source code (identifiers / comments / tests), commit messages, branch / tag names, and LICENSE: English.
-- README / AGENTS.md / docs, issues, and PRs: English by default. If a project chooses Japanese as the primary language, record that choice in its project-specific brief.
+- The primary operating language is Japanese because the owner is a Japanese speaker.
+- `README.md` is the only document that is English by default, because GitHub renders it as the public first entrypoint.
+- `AGENTS.md`, docs, issues, PRs, briefs, and plans are Japanese by default unless the project brief records a different operating language.
 
-For a T1 public repository, use the industry-standard sibling pattern: keep **`README.md` in English** and place localized versions such as `README.ja.md` beside it. GitHub auto-renders only `README.md` on the project page, so the first entrypoint must be English to avoid excluding international contributors. Put a one-line language selector at the top of each README file.
+For completed projects intended for public consumption, add English documentation according to public importance. Use the sibling pattern when needed: keep **`README.md` in English** and place localized versions such as `README.ja.md` beside it. Put a one-line language selector at the top of each localized README file.
 
-Working docs may use Japanese when that is the lowest-cost operating language, while the public surface, especially the primary README, stays English. `AGENTS.md` should stay English. Translate docs / ADRs or add localized siblings incrementally when there is clear demand.
+Translate deeper docs / ADRs or add localized siblings incrementally when public users, contributors, release readiness, or support burden justify the extra maintenance cost. Do not translate internal working docs only for appearance.
 
 ## Multi-agent
 

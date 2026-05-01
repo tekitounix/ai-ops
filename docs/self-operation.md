@@ -63,6 +63,20 @@ python -m ai_ops promote-plan dogfood --source /path/to/local-plan.md --dry-run
 - Test: CLI behavior、audit rule、prompt assembly、packaging、OS-specific behavior を変える。
 - README / docs: user-facing entrypoint、operator-facing procedure、release-ready claim を変える。
 
+## Improvement Capture Loop
+
+ai-ops 自身の作業を Adopt する前に、active plan の `## Improvement Candidates` を triage する。各 candidate は次の enum に振り分ける:
+
+- `current-plan` — 同 plan 内で吸収する小修正。
+- `durable-doc` — `docs/` 配下 (`ai-first-lifecycle.md` / `self-operation.md` / `realignment.md` / `projects-audit.md` 等)。
+- `adr` — public contract / operation model / safety policy / CLI 責任 / reproducibility model の変更。`docs/decisions/` に新 ADR を起こす。
+- `template` — `templates/` 配下 (plan / brief / handoff)。
+- `audit` / `harness` / `test` — `ai_ops/audit/` / `ai_ops/_resources/` (build artifact、手で書かない) / `tests/` の対応 module。
+- `deferred` — 今回は採用しない (理由必須)。次 plan で再評価。
+- `rejected` — 採用しないと判断 (理由必須)。
+
+`adr` / `harness` semantics 変更 / 既存 audit rule の厳格化 / 新 subcommand 追加は、AGENTS.md Operation Model の Propose -> Confirm -> Execute を必ず通す。`current-plan` / `durable-doc` / `template` / `test` の小幅追加は通常 commit で良い。同じ candidate が 3 plan 連続で `deferred` になった場合は、`docs/plans/_inbox.md` 化または独立 plan / ADR への昇格を検討する。
+
 ## File Hygiene
 
 Tracked files are source of truth. Generated files such as `.direnv/`, `.pytest_cache/`, `__pycache__/`, `build/`, `*.egg-info/`, and `ai_ops/_resources/` are not source of truth and must stay ignored.
