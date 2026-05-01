@@ -250,19 +250,22 @@ def test_p2_for_clean_managed_project_under_ghq(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A managed project (.ai-ops/harness.toml) with matching files and no
-    drift → P2 / no-op."""
+    drift → P2 / no-op.
+
+    Manifest pins to actual ai-ops HEAD so detect_drift sees no SHA drift
+    AND policy drift detector sees a valid anchor (avoiding the new
+    `no-anchor` signal which would otherwise raise priority to P1).
+    """
     _stub_home(monkeypatch, tmp_path)
     p = _make_under_ghq(tmp_path, "github.com", "owner", "clean")
     _git_init(p)
     (p / "AGENTS.md").write_text("agents", encoding="utf-8")
     (p / ".ai-ops").mkdir()
-    # Build a manifest with empty ai_ops_sha so detect_drift cannot report a
-    # SHA drift against the real ai-ops repo (sha_drift requires both sides
-    # to be non-empty before flagging).
-    from ai_ops.audit.harness import HarnessManifest, _sha256
+    from ai_ops.audit.harness import HarnessManifest, _ai_ops_head_sha, _sha256
+    ai_ops_root = Path(__file__).resolve().parent.parent
     files_hashes = {"AGENTS.md": _sha256(p / "AGENTS.md")}
     m = HarnessManifest(
-        ai_ops_sha="",
+        ai_ops_sha=_ai_ops_head_sha(ai_ops_root),
         harness_files=files_hashes,
         last_sync="2026-04-29T00:00:00+00:00",
     )
@@ -270,6 +273,7 @@ def test_p2_for_clean_managed_project_under_ghq(
     s = projects.collect_signals(p)
     assert s.mgd == "yes"
     assert s.harness_drift is False
+    assert s.policy_drift == "ok"
     assert s.priority == "P2"
     assert s.sub_flow == "no-op"
 

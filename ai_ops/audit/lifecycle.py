@@ -226,7 +226,14 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
         if not _has_progress_checkbox(text):
             warnings.append(f"{rel} missing Progress checkbox")
 
-        if not _has_section(text, "Improvement Candidates"):
+        # `Improvement Candidates` is the canonical section that future plans
+        # must include; sourced from _canonical so that lifecycle audit and
+        # policy drift detection cannot drift apart on the requirement.
+        from ai_ops.audit._canonical import REQUIRED_PLAN_SECTIONS as _REQ
+
+        if "Improvement Candidates" in _REQ and not _has_section(
+            text, "Improvement Candidates"
+        ):
             warnings.append(f"{rel} missing '## Improvement Candidates' section")
 
         if _progress_complete(text) and _outcomes_still_tbd(text):

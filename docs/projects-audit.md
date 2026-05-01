@@ -31,7 +31,7 @@ python -m ai_ops audit projects --json > /tmp/projects-audit.json
 python -m ai_ops audit projects
 ```
 
-Each row carries the eight signals that drive priority and sub-flow assignment:
+Each row carries the nine signals that drive priority and sub-flow assignment:
 
 | key | meaning |
 |---|---|
@@ -43,6 +43,7 @@ Each row carries the eight signals that drive priority and sub-flow assignment:
 | `last_commit_human` | `git log -1 --format=%ar` (e.g. "1 day ago") |
 | `todo` | TODO / FIXME / WIP / TBD count across text sources (rg-based; degrades to 0 if rg absent) |
 | `agents_md` | AGENTS.md present at root |
+| `policy_drift` | `ok` / `stale` / `diverged` / `ahead-and-behind` / `no-anchor` / `n/a` — managed project's own `templates/plan.md` and active plans vs ai-ops canonical schema (`^## ` heading set). `n/a` = unmanaged or ai-ops itself. `no-anchor` = `harness.toml.ai_ops_sha` missing. `stale` = canonical has sections project lacks. `diverged` = project has extra sections. `ahead-and-behind` = both. AGENTS.md is intentionally not checked (project-specific contract). |
 
 Plus three derived flags the CLI computes once: `has_stack`, `is_docs_only`, `harness_drift`. Filenames only — secret **values** are never opened (the CLI's `_count_secret_files` is name-based).
 
@@ -66,7 +67,7 @@ The Brief is a Markdown document the agent assembles from the CLI's JSON output.
 | Priority | Trigger |
 |---|---|
 | **P0** | `loc=DRIFT` (project lives outside `~/ghq/`) OR `sec≥1` (secret-name file present) |
-| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift, OR last commit older than 540 days (~18 months) on a still-active stack |
+| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift, OR `mgd=yes` with `policy_drift` ∈ {`stale`, `diverged`, `ahead-and-behind`, `no-anchor`}, OR last commit older than 540 days (~18 months) on a still-active stack |
 | **P2** | observation only: clean managed projects, validation fixtures (`mgd=no` and intentionally so), dirty work in progress, TODO churn |
 
 A project's priority is the highest it qualifies for; the JSON lists each project exactly once.
@@ -77,7 +78,7 @@ A project's priority is the highest it qualifies for; the JSON lists each projec
 |---|---|
 | `loc=DRIFT` | `relocate` → `docs/project-relocation.md` |
 | `loc=ok` AND `mgd=no` AND has stack or non-docs source | `migrate` → `docs/project-addition-and-migration.md` |
-| `loc=ok` AND `mgd=yes` AND drift signal (`nix=missing+has_stack` or `harness_drift`) | `realign` → `docs/realignment.md` |
+| `loc=ok` AND `mgd=yes` AND drift signal (`nix=missing+has_stack`, `harness_drift`, or `policy_drift` ∈ {`stale`, `diverged`, `ahead-and-behind`, `no-anchor`}) | `realign` → `docs/realignment.md` |
 | otherwise | `no-op` |
 
 Validation / fixture repositories (`mgd=no` and intentionally so, often `~/ghq/local/...`) are P2 by default and listed in the Brief as `no-op` unless the user explicitly opts them into a sub-flow.

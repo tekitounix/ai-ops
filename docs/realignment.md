@@ -55,6 +55,8 @@ ai-ops audit standard --since <main-or-equivalent-base-ref>
 ai-ops audit nix
 ```
 
+該当 project が `ghq list -p` 配下なら、`ai-ops audit projects --json` を実行し、対象 project の `policy_drift` field を確認する。値が `stale` / `diverged` / `ahead-and-behind` / `no-anchor` のいずれかなら、本 realignment で remediation を proposal に含める。
+
 `audit standard --since` の base ref が不明な場合は、最新 release tag、`origin/main`、あるいは「最後に大きな整備をしたと思われる commit」から選ぶ。判断根拠を Brief に残す。
 
 この相では何も書き換えない。secret value は読まない。secret らしいファイル名 / pattern は値を開かず Risk として扱う。
@@ -68,7 +70,7 @@ ai-ops audit nix
 3. **Ideal-state delta** - ai-ops モデルとの差分。何が足りないか、何が余分か、何が乖離しているか。
 4. **Proposed remediation** - 可逆性で 3 段に分ける。
    - **P0 doc-only**: AGENTS.md、README、ADR、lifecycle 文書、self-operation 相当の運用書。
-   - **P1 structural**: templates、`docs/plans/` 構造、audit hook、`.gitignore`、`docs/brief-YYYYMMDD.md`。
+   - **P1 structural**: templates、`docs/plans/` 構造、audit hook、`.gitignore`、`docs/brief-YYYYMMDD.md`、policy drift remediation (`audit projects` の `policy_drift` が `stale` / `diverged` / `ahead-and-behind` の場合: 自前 `templates/plan.md` または active plan に canonical schema を採用。`no-anchor` の場合: まず `.ai-ops/harness.toml` の `ai_ops_sha` を anchor として確立する harness sync を Phase 0 として先行)。
    - **P2 behavioral**: CI、Nix retrofit、harness alignment、packaging、test coverage。
    - 各 item には target paths / nature (add | edit | rm) / reversibility (Git revert / config rollback / data 損失リスク) を書く。
 5. **Out-of-scope** - 観測したが今回は触らない drift と、その理由。

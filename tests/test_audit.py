@@ -600,6 +600,160 @@ def test_security_audit_skips_value_scan_in_dependency_dirs(tmp_path: Path) -> N
     assert run_security_audit(tmp_path) == 0
 
 
+def _setup_managed_project(tmp_path: Path, ai_ops_sha: str = "abc123") -> Path:
+    """Create a minimal managed-project structure with a harness.toml manifest."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    harness_dir = project / ".ai-ops"
+    harness_dir.mkdir()
+    (harness_dir / "harness.toml").write_text(
+        f'ai_ops_sha = "{ai_ops_sha}"\n'
+        f'last_sync = "2026-04-01T00:00:00Z"\n\n'
+        f"[harness_files]\n",
+        encoding="utf-8",
+    )
+    return project
+
+
+def _canonical_plan_text() -> str:
+    """Return a synthetic plan body with all REQUIRED_PLAN_SECTIONS as headings."""
+    from ai_ops.audit._canonical import REQUIRED_PLAN_SECTIONS
+
+    body = ["# Test plan\n"]
+    for section in REQUIRED_PLAN_SECTIONS:
+        body.append(f"## {section}\n\nbody\n")
+    return "\n".join(body)
+
+
+def test_policy_drift_unmanaged_project_is_n_a(tmp_path: Path) -> None:
+    """Project without `.ai-ops/harness.toml` reports `n/a` (out of scope)."""
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    assert _detect_policy_drift(project, tmp_path) == "n/a"
+
+
+def test_policy_drift_ai_ops_self_is_n_a(tmp_path: Path) -> None:
+    """ai-ops itself returns `n/a` because lifecycle audit owns its self-check."""
+    from ai_ops.audit.projects import _detect_policy_drift
+    from ai_ops.paths import package_root
+
+    # Use the actual ai-ops repo so _is_ai_ops_repo() detects it.
+    ai_ops_root = package_root()
+    assert _detect_policy_drift(ai_ops_root, ai_ops_root) == "n/a"
+
+
+def test_policy_drift_no_anchor_when_ai_ops_sha_missing(tmp_path: Path) -> None:
+    """Managed project with empty `ai_ops_sha` returns `no-anchor`."""
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = _setup_managed_project(tmp_path, ai_ops_sha="")
+    assert _detect_policy_drift(project, tmp_path) == "no-anchor"
+
+
+def test_policy_drift_ok_when_no_plans_or_template(tmp_path: Path) -> None:
+    """Managed project with no own plans/templates is `ok` (nothing to diverge)."""
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = _setup_managed_project(tmp_path)
+    assert _detect_policy_drift(project, tmp_path) == "ok"
+
+
+def test_policy_drift_stale_when_active_plan_lacks_required_section(
+    tmp_path: Path,
+) -> None:
+    """Active plan missing `## Improvement Candidates` flips signal to `stale`."""
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = _setup_managed_project(tmp_path)
+    plan = project / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    # Include almost everything except Improvement Candidates.
+    plan.write_text(
+        "# Feature\n\n"
+        "## Purpose / Big Picture\n\nbody\n\n"
+        "## Progress\n\n- [x] step\n\n"
+        "## Surprises & Discoveries\n\nbody\n\n"
+        "## Decision Log\n\nbody\n\n"
+        "## Outcomes & Retrospective\n\nbody\n\n"
+        "## Context and Orientation\n\nbody\n\n"
+        "## Plan of Work\n\nbody\n\n"
+        "## Concrete Steps\n\nbody\n\n"
+        "## Validation and Acceptance\n\nbody\n\n"
+        "## Idempotence and Recovery\n\nbody\n\n"
+        "## Artifacts and Notes\n\nbody\n\n"
+        "## Interfaces and Dependencies\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    assert _detect_policy_drift(project, tmp_path) == "stale"
+
+
+def test_policy_drift_diverged_when_own_template_has_extra_sections(
+    tmp_path: Path,
+) -> None:
+    """Project's own templates/plan.md with non-canonical sections (canonical-superset)
+    flips signal to `diverged` — ahead but not behind."""
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = _setup_managed_project(tmp_path)
+    own_template = project / "templates" / "plan.md"
+    own_template.parent.mkdir(parents=True)
+    # Include all canonical sections + 1 project-specific.
+    own_template.write_text(
+        _canonical_plan_text() + "\n## Project Specific Gate\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    assert _detect_policy_drift(project, tmp_path) == "diverged"
+
+
+def test_policy_drift_ahead_and_behind_when_own_template_diverges_both_ways(
+    tmp_path: Path,
+) -> None:
+    """Project lacks one canonical section AND has one project-specific section
+    flips signal to `ahead-and-behind` (both directions of drift)."""
+    from ai_ops.audit.projects import _detect_policy_drift
+    from ai_ops.audit._canonical import REQUIRED_PLAN_SECTIONS
+
+    project = _setup_managed_project(tmp_path)
+    own_template = project / "templates" / "plan.md"
+    own_template.parent.mkdir(parents=True)
+    # Build a template that drops 1 canonical section and adds 1 own.
+    body = ["# Project plan\n"]
+    for section in REQUIRED_PLAN_SECTIONS:
+        if section == "Improvement Candidates":
+            continue  # behind: missing canonical
+        body.append(f"## {section}\n\nbody\n")
+    body.append("## Project Specific Gate\n\nbody\n")  # ahead: extra
+    own_template.write_text("\n".join(body), encoding="utf-8")
+
+    assert _detect_policy_drift(project, tmp_path) == "ahead-and-behind"
+
+
+def test_policy_drift_skips_archived_plans(tmp_path: Path) -> None:
+    """Archived plans (under `docs/plans/archive/<slug>/plan.md`) are not checked.
+
+    Per the policy-drift Decision Log, archived plans are historical record and
+    must not be retroactively scored against new canonical schema.
+    """
+    from ai_ops.audit.projects import _detect_policy_drift
+
+    project = _setup_managed_project(tmp_path)
+    archived = project / "docs" / "plans" / "archive" / "2026-01-01-old" / "plan.md"
+    archived.parent.mkdir(parents=True)
+    # An archived plan that lacks Improvement Candidates would WARN if active,
+    # but should not flip the project's policy_drift signal.
+    archived.write_text(
+        "# Old plan\n\n## Progress\n\n- [x] done\n",
+        encoding="utf-8",
+    )
+
+    assert _detect_policy_drift(project, tmp_path) == "ok"
+
+
 def test_plan_template_and_promoted_plan_share_top_level_headings() -> None:
     """templates/plan.md と build_promoted_plan の出力は同じ top-level 見出し集合を持つ。
 

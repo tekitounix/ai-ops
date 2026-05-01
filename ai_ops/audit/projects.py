@@ -18,7 +18,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ai_ops.audit.harness import HARNESS_MANIFEST, detect_drift
+from ai_ops.audit._canonical import REQUIRED_PLAN_SECTIONS
+from ai_ops.audit.harness import HARNESS_MANIFEST, HarnessManifest, detect_drift
 from ai_ops.audit.nix import _ghq_list_paths
 
 
@@ -90,6 +91,7 @@ class ProjectSignals:
     has_stack: bool  # any stack marker present
     is_docs_only: bool  # ≥ 85% of tracked files are doc / image suffixes
     harness_drift: bool  # mgd=yes and detect_drift reports any drift
+    policy_drift: str  # "ok" | "stale" | "diverged" | "ahead-and-behind" | "no-anchor" | "n/a"
     priority: str  # "P0" | "P1" | "P2"
     sub_flow: str  # "relocate" | "migrate" | "realign" | "no-op"
 
@@ -274,6 +276,82 @@ def _is_ai_ops_repo(path: Path) -> bool:
     )
 
 
+def _plan_top_level_headings(text: str) -> set[str]:
+    """Return the set of `^## <title>` headings stripped of trailing whitespace."""
+    return {m.group(1).strip() for m in re.finditer(r"(?m)^##\s+(.+?)\s*$", text)}
+
+
+def _detect_policy_drift(project_path: Path, ai_ops_root: Path) -> str:
+    """Compare project's plan-related files against ai-ops canonical schema.
+
+    Returns one of:
+    - "n/a"            — unmanaged project, ai-ops itself, or no plans/templates to check
+    - "no-anchor"      — managed project but `harness.toml.ai_ops_sha` missing/empty
+    - "ok"             — schemas match
+    - "stale"          — project lacks canonical headings (canonical is ahead)
+    - "diverged"       — project has non-canonical headings (project is ahead)
+    - "ahead-and-behind" — both directions of drift present
+
+    Detection is set-based on top-level (`^## `) headings only. Heading order
+    is allowed to differ. Section content is not inspected (deferred to v2).
+    AGENTS.md is intentionally not checked — managed projects' AGENTS.md is
+    project-specific, not a canonical copy.
+    """
+    if not (project_path / HARNESS_MANIFEST).is_file():
+        return "n/a"
+    if _is_ai_ops_repo(project_path):
+        return "n/a"
+
+    try:
+        manifest_text = (project_path / HARNESS_MANIFEST).read_text(encoding="utf-8")
+        manifest = HarnessManifest.from_toml(manifest_text)
+    except Exception:
+        return "no-anchor"
+    if not manifest.ai_ops_sha:
+        return "no-anchor"
+
+    canonical_sections = frozenset(REQUIRED_PLAN_SECTIONS)
+    ahead = False  # project has headings canonical lacks
+    behind = False  # project lacks headings canonical has
+
+    own_template = project_path / "templates" / "plan.md"
+    if own_template.is_file():
+        try:
+            own_set = _plan_top_level_headings(own_template.read_text(encoding="utf-8"))
+            if canonical_sections - own_set:
+                behind = True
+            if own_set - canonical_sections:
+                ahead = True
+        except (UnicodeDecodeError, OSError):
+            pass
+
+    plans_dir = project_path / "docs" / "plans"
+    if plans_dir.is_dir():
+        # Active plans only — `*/plan.md` is one level deep; archived plans
+        # live two levels deep under `archive/<date-slug>/plan.md`.
+        for plan in plans_dir.glob("*/plan.md"):
+            if plan.parent.name == "archive":
+                continue
+            try:
+                text = plan.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            plan_set = _plan_top_level_headings(text)
+            # An active plan only needs canonical sections present (set
+            # membership). Extra project-specific sections are allowed and
+            # do not flip `ahead` (per-plan customization is normal).
+            if canonical_sections - plan_set:
+                behind = True
+
+    if ahead and behind:
+        return "ahead-and-behind"
+    if behind:
+        return "stale"
+    if ahead:
+        return "diverged"
+    return "ok"
+
+
 def collect_signals(path: Path) -> ProjectSignals:
     """Read-only signal collection for one project. Never writes."""
     loc = "ok" if _under_ghq_root(path) else "DRIFT"
@@ -304,10 +382,10 @@ def collect_signals(path: Path) -> ProjectSignals:
     todo = _todo_count(path)
     agents_md = (path / "AGENTS.md").is_file()
 
+    ai_ops_root = Path(__file__).resolve().parents[2]
     harness_drift = False
     if mgd == "yes":
         try:
-            ai_ops_root = Path(__file__).resolve().parents[2]
             drift = detect_drift(path, ai_ops_root)
             harness_drift = bool(
                 drift.missing
@@ -318,12 +396,15 @@ def collect_signals(path: Path) -> ProjectSignals:
         except Exception:
             harness_drift = False
 
+    policy_drift = _detect_policy_drift(path, ai_ops_root)
+
     # Priority assignment
     if loc != "ok" or sec >= 1:
         priority = "P0"
     elif (
         (mgd == "no" and nix == "missing" and has_stack)
         or (mgd == "yes" and harness_drift)
+        or policy_drift in ("stale", "diverged", "ahead-and-behind", "no-anchor")
         or (
             age_days is not None
             and age_days > STALE_COMMIT_DAYS
@@ -358,7 +439,9 @@ def collect_signals(path: Path) -> ProjectSignals:
     elif priority == "P2":
         sub_flow = "no-op"
     elif mgd == "yes" and (
-        (nix == "missing" and has_stack) or harness_drift
+        (nix == "missing" and has_stack)
+        or harness_drift
+        or policy_drift in ("stale", "diverged", "ahead-and-behind", "no-anchor")
     ):
         sub_flow = "realign"
     elif mgd == "no" and (has_stack or not docs_only):
@@ -381,6 +464,7 @@ def collect_signals(path: Path) -> ProjectSignals:
         has_stack=has_stack,
         is_docs_only=docs_only,
         harness_drift=harness_drift,
+        policy_drift=policy_drift,
         priority=priority,
         sub_flow=sub_flow,
     )
@@ -407,9 +491,20 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "has_stack": s.has_stack,
         "is_docs_only": s.is_docs_only,
         "harness_drift": s.harness_drift,
+        "policy_drift": s.policy_drift,
         "priority": s.priority,
         "sub_flow": s.sub_flow,
     }
+
+
+_POLICY_DRIFT_SHORT = {
+    "ok": "ok",
+    "stale": "stl",
+    "diverged": "div",
+    "ahead-and-behind": "a&b",
+    "no-anchor": "noa",
+    "n/a": "n/a",
+}
 
 
 def _shorten_path(path: Path, width: int = 50) -> str:
@@ -433,6 +528,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         ("dirty", 5),
         ("last", 14),
         ("todo", 4),
+        ("pdr", 3),
         ("pri", 3),
         ("sub-flow", 9),
     )
@@ -447,6 +543,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             if len(s.last_commit_human) > 14
             else s.last_commit_human
         )
+        pdr = _POLICY_DRIFT_SHORT.get(s.policy_drift, s.policy_drift[:3])
         row = (
             f"{proj:<28} "
             f"{path_short:<52} "
@@ -457,6 +554,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             f"{s.dirty:>5} "
             f"{last:<14} "
             f"{s.todo:>4} "
+            f"{pdr:<3} "
             f"{s.priority:<3} "
             f"{s.sub_flow:<9}"
         )
