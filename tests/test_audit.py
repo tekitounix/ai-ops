@@ -381,6 +381,47 @@ def test_lifecycle_audit_does_not_warn_archive_ready_when_outcomes_tbd(
     assert not any("archive-ready" in w for w in warnings)
 
 
+def test_outcomes_tbd_recognises_japanese_period(tmp_path: Path) -> None:
+    """`TBD。続き` (Japanese period) must be recognised as starting with TBD.
+
+    Regression: earlier the parser used `body.split(None, 1)[0].rstrip(".。")`
+    which fails when there is no whitespace before the Japanese period —
+    `TBD。完了時に内容` was treated as 'not TBD' because the first whitespace-
+    separated token was `TBD。完了時に内容` (no `.` or `。` at the end to strip).
+    """
+    from ai_ops.audit.lifecycle import _outcomes_filled, _outcomes_still_tbd
+
+    text = (
+        "# Plan\n\n"
+        "## Outcomes & Retrospective\n\n"
+        "TBD。完了時に shipped したものを記録する。\n"
+    )
+    assert _outcomes_still_tbd(text) is True
+    assert _outcomes_filled(text) is False
+
+
+def test_outcomes_filled_recognises_substantive_content(tmp_path: Path) -> None:
+    """A body that begins with substantive content (no TBD prefix) is filled."""
+    from ai_ops.audit.lifecycle import _outcomes_filled, _outcomes_still_tbd
+
+    text = (
+        "# Plan\n\n"
+        "## Outcomes & Retrospective\n\n"
+        "Shipped X, Y, Z. TBD remains for follow-up.\n"
+    )
+    assert _outcomes_still_tbd(text) is False
+    assert _outcomes_filled(text) is True
+
+
+def test_outcomes_tbd_recognises_various_forms(tmp_path: Path) -> None:
+    """`TBD`, `TBD.`, `TBD。`, `TBD ...`, `TBD,...` should all be detected."""
+    from ai_ops.audit.lifecycle import _outcomes_still_tbd
+
+    for form in ("TBD", "TBD.", "TBD。", "TBD foo", "TBD, foo", "TBD\nfoo"):
+        text = f"## Outcomes & Retrospective\n\n{form}\n"
+        assert _outcomes_still_tbd(text) is True, f"failed for: {form!r}"
+
+
 def test_plan_age_prefers_git_log_over_mtime(tmp_path: Path) -> None:
     """When the plan is tracked in git, _plan_age uses commit time, not mtime.
 

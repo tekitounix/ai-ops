@@ -85,7 +85,28 @@ Plan path: `docs/plans/automated-propagation/plan.md`。採用後の archive pat
 
 ## Outcomes & Retrospective
 
-TBD。完了時に、shipped したもの、残ったもの、実 use での `propagate --all` の挙動(具体的にどのプロジェクトに何個 PR が立ったか)、今後の plan で何を変えるべきかをまとめる。
+**Superseded** — 着手前のセルフ監査で複数の重大な未決事項が判明したため、本プランは実装せず、増分の小プラン群に分割して置き換える。
+
+判明した重大な未決事項:
+
+1. `propagate` がずれの種類ごとに何を書き換えるかが未定義(設計の核心が空)。`stale` で user の active plan を自動編集するのか、`harness modified` で user の編集を巻き戻すのか、など根幹の挙動が未確定。
+2. CI の `pip install ai-ops` が動かない(PyPI 未公開)。`pip install git+url` または `nix run` への切り替えが必要。
+3. CI ワークフローが `audit harness --strict` だけで policy drift を見ない。policy drift の単一プロジェクト検査コマンドが ai-ops に未実装で、新規実装が必要。
+4. per-project confirmation と batch 確認の解釈が緩い。AGENTS.md は project-specific harness overwrite を per-project 必須として明示列挙しており、`bootstrap` の precedent を流用する論拠は弱い。
+5. 失敗時のクリーンアップ(worktree、ローカルブランチ)が手動指示になっている。
+6. PR body 構造未定義、ブランチ base ref 未指定、GitHub 前提が暗黙、realignment との関係未整理、Safety 緩和の具体要件が広すぎる、隔離保証のテストが手動 — 中程度の問題が多数。
+
+**置き換え方針(増分小プラン群):**
+
+- `anchor-sync-propagation`: 最小ユニット。`harness.toml` の `ai_ops_sha` 更新 PR だけを対象とする。user content には一切触れない。
+- (次の段階) `ci-workflow-propagation`: GitHub Actions 配置 PR 専用。配布経路問題を先に解く必要があるため、anchor-sync が動いてから着手。
+- (次の段階) `single-project-policy-audit`: CI 用に必要な「単一プロジェクトの policy drift 検査」コマンド。
+- (将来) `notifier-installation`: 第三層、独立性が高いので最後。
+
+このプランで企てた三層構造の方向性自体は妥当だが、一つのプランに詰め込みすぎた。各層を独立した小プランで増分実装し、各段階で挙動を確認してから次へ進める。
+
+shipped: 0 件(本プランは superseded)。
+本プラン執筆と監査により得られた成果: ai-ops 自体への自動反映機構の設計上の制約が明文化されたこと。次のプランはこの制約を出発点として書ける。
 
 ## Improvement Candidates
 

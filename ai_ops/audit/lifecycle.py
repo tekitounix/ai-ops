@@ -40,6 +40,7 @@ REQUIRED_FILES = (
     "ai_ops/lifecycle/plans.py",
     "ai_ops/audit/projects.py",
     "ai_ops/bootstrap.py",
+    "ai_ops/propagate.py",
 )
 
 CLASSIFICATION_TERMS = ("Fact", "Inference", "Risk", "User decision", "AI recommendation")
@@ -278,27 +279,44 @@ def _progress_complete(text: str) -> bool:
     return all(box in ("x", "X") for box in boxes)
 
 
-def _outcomes_still_tbd(text: str) -> bool:
+_OUTCOMES_TBD_RE = re.compile(r"^TBD(?:[.。、,\s]|$)", re.IGNORECASE)
+
+
+def _outcomes_starts_with_tbd(text: str) -> bool:
+    """True when the body starts with the literal token TBD followed by
+    a separator (period, Japanese 。, comma, whitespace, or end of body).
+
+    Handles both English and Japanese punctuation so that a body like
+    "TBD." or "TBD。完了時に..." is correctly recognised as TBD.
+    """
     match = re.search(r"(?ms)^## Outcomes & Retrospective\s*(.*?)(?=^## |\Z)", text)
     if not match:
         return False
     body = match.group(1).strip()
     if not body:
         return False
-    first_token = body.split(None, 1)[0].rstrip(".。")
-    return first_token.upper() == "TBD"
+    return bool(_OUTCOMES_TBD_RE.match(body))
+
+
+def _outcomes_still_tbd(text: str) -> bool:
+    """Backward-compatible alias of `_outcomes_starts_with_tbd`."""
+    return _outcomes_starts_with_tbd(text)
 
 
 def _outcomes_filled(text: str) -> bool:
-    """True when Outcomes & Retrospective has substantive content (not TBD)."""
+    """True when Outcomes & Retrospective has substantive content (not TBD).
+
+    Returns False when the body is empty, missing, or starts with the literal
+    token TBD followed by a separator. Returns True for any other content,
+    including bodies that mention TBD later but begin with substantive text.
+    """
     match = re.search(r"(?ms)^## Outcomes & Retrospective\s*(.*?)(?=^## |\Z)", text)
     if not match:
         return False
     body = match.group(1).strip()
     if not body:
         return False
-    first_token = body.split(None, 1)[0].rstrip(".。")
-    return first_token.upper() != "TBD"
+    return not bool(_OUTCOMES_TBD_RE.match(body))
 
 
 def run_lifecycle_audit(root: Path) -> int:
