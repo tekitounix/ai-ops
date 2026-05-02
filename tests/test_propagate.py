@@ -644,6 +644,31 @@ canonical = "python3 check.py"
     assert 'canonical = "python3 check.py"' in new_text
 
 
+def test_replace_harness_files_section_preserves_blank_line_to_next_section() -> None:
+    """The blank line between [harness_files] and the following section
+    must survive replacement.
+
+    Regression: real propagate-files run on umipal #20 ate the blank line
+    between the harness_files entries and `[project_checks]`. The greedy
+    `[^\\[]*` regex consumed the blank line; the replacement string had
+    no trailing blank, so the next section was glued to the harness_files
+    block in the output diff.
+    """
+    from ai_ops.propagate import _replace_harness_files_section
+
+    original = (
+        '[harness_files]\n'
+        '"AGENTS.md" = "old"\n'
+        '\n'
+        '[project_checks]\n'
+        'canonical = "x"\n'
+    )
+    new_text = _replace_harness_files_section(
+        original, new_files={"AGENTS.md": "new"},
+    )
+    assert '"AGENTS.md" = "new"\n\n[project_checks]' in new_text
+
+
 def test_replace_harness_files_section_appends_when_missing() -> None:
     """If [harness_files] doesn't exist, append a new section."""
     from ai_ops.propagate import _replace_harness_files_section

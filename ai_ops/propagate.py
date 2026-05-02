@@ -366,22 +366,31 @@ def _replace_harness_files_section(
     sections like `[project_checks]`).
 
     The regex matches `[harness_files]` and everything up to (but not
-    including) the next top-level `[section]`. Since file paths in
-    harness_files are quoted strings (e.g., `"AGENTS.md" = "..."`) they
-    cannot contain `[`, so the bracket sentinel is unambiguous.
+    including) the next top-level `[section]`. The `[^\\[]*` is greedy
+    and pulls in any trailing blank line that was sitting before the
+    next section header — so when constructing the replacement we
+    re-insert a blank-line separator if a next section follows. Without
+    this fix-up the blank line that visually separates sections gets
+    silently eaten (same class of bug as the original anchor-bump regex).
     """
     new_lines = ["[harness_files]"]
     for path in sorted(new_files):
         new_lines.append(f'"{path}" = "{new_files[path]}"')
-    # Trailing newline so subsequent sections start on their own line.
-    new_section = "\n".join(new_lines) + "\n"
 
-    if _HARNESS_FILES_SECTION_RE.search(text):
-        return _HARNESS_FILES_SECTION_RE.sub(new_section, text, count=1)
-    # No section yet: append at end (with leading blank line for visual
-    # separation from prior content).
-    suffix = "" if text.endswith("\n") else "\n"
-    return text + suffix + "\n" + new_section
+    match = _HARNESS_FILES_SECTION_RE.search(text)
+    if not match:
+        # No section yet: append at end with visual separation.
+        suffix = "" if text.endswith("\n") else "\n"
+        new_section = "\n".join(new_lines) + "\n"
+        return text + suffix + "\n" + new_section
+
+    rest = text[match.end():]
+    if rest.startswith("["):
+        # Next section follows; restore the blank-line separator.
+        new_section = "\n".join(new_lines) + "\n\n"
+    else:
+        new_section = "\n".join(new_lines) + ("\n" if rest else "\n")
+    return text[: match.start()] + new_section + rest
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
