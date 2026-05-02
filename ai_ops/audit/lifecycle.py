@@ -56,6 +56,8 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("audit", "--help"),
     ("check", "--help"),
     ("promote-plan", "--help"),
+    ("propagate-anchor", "--help"),
+    ("propagate-init", "--help"),
 )
 
 PLAN_STALE_DAYS = 30

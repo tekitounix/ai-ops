@@ -73,6 +73,8 @@ ai-ops doesn't ship a fixed template, but the prompts above expect a small set o
 | `ai-ops bootstrap [--tier {1,2}]` | Install missing required tools after confirmation. Default `--tier 1` (required); `--tier 2` adds recommended |
 | `ai-ops update [--tier {1,2}]` | Update present tools after confirmation. Default `--tier 2` |
 | `ai-ops promote-plan <slug> [--source PATH]` | Promote a local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
+| `ai-ops propagate-anchor (--all \| --project PATH) [--dry-run]` | Open PRs to bump `ai_ops_sha` in managed projects whose only drift is the anchor |
+| `ai-ops propagate-init (--all \| --project PATH) [--dry-run]` | Open PRs to commit `.ai-ops/harness.toml` from local working copy where the manifest exists on disk but is untracked |
 
 `new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}` (T1 public / T2 private / T3 local), `--nix {auto,none,devshell,apps,full}` (default `auto`: AI decides via per-project rubric), `--output <path>`, `--dry-run`, `--interactive`.
 
