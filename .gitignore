@@ -1,6 +1,7 @@
 AGENTS.local.md
 /.claude/settings.local.json
 /.claude/projects/
+/.claude/scheduled_tasks.lock
 /.direnv/
 /.migration-status.lock/
 /.tmp/
