@@ -474,6 +474,87 @@ def test_init_target_skips_invalid_manifest(tmp_path: Path) -> None:
     )
 
 
+def test_init_one_bumps_ai_ops_sha_to_passed_head(tmp_path: Path) -> None:
+    """init_one must replace the captured ai_ops_sha with the current HEAD
+    sha passed in, so the merged manifest doesn't appear stale immediately.
+
+    Without this, the init PR would freeze whatever sha the user happened
+    to be synced to, forcing a redundant anchor-sync PR right after merge.
+    """
+    from ai_ops.propagate import (
+        InitHarnessTarget, _write_updated_manifest, init_one,
+    )
+    from ai_ops.audit.harness import HarnessManifest
+
+    project = _make_untracked_manifest_project(tmp_path, "bump-test")
+    default_branch = _add_self_origin(project)
+
+    captured_text = (
+        'ai_ops_sha = "0000000000000000000000000000000000000000"\n'
+        'last_sync = "2026-01-01T00:00:00+00:00"\n\n'
+        '[harness_files]\n'
+        '"AGENTS.md" = "deadbeef"\n'
+    )
+    target = InitHarnessTarget(
+        project_path=project,
+        default_branch=default_branch,
+        repo_full_name="owner/bump-test",
+        manifest_text=captured_text,
+    )
+
+    # Mock gh pr list (no existing) and gh pr create (success) so we can
+    # observe the actual file written into the worktree before cleanup.
+    fresh_sha = "abcdef1234567890abcdef1234567890abcdef12"
+
+    captured_written: dict[str, str] = {}
+    real_write = _write_updated_manifest  # not used here, demonstrates pattern
+
+    # Patch gh and capture the manifest written into the worktree by
+    # intercepting the worktree path before cleanup deletes it.
+    real_subprocess_run = subprocess.run
+    pr_list_called = []
+
+    def mock_subprocess_run(args, **kwargs):
+        # Let real git commands run, but intercept gh.
+        if args and args[0] == "gh":
+            if args[1] == "pr" and args[2] == "list":
+                pr_list_called.append(True)
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="[]", stderr="",
+                )
+            if args[1] == "pr" and args[2] == "create":
+                # Read the manifest from the worktree (which is the cwd).
+                cwd = kwargs.get("cwd")
+                if cwd:
+                    manifest_path = Path(cwd) / ".ai-ops" / "harness.toml"
+                    if manifest_path.exists():
+                        captured_written["text"] = manifest_path.read_text(
+                            encoding="utf-8"
+                        )
+                return subprocess.CompletedProcess(
+                    args=args, returncode=0,
+                    stdout="https://github.com/owner/bump-test/pull/1",
+                    stderr="",
+                )
+        return real_subprocess_run(args, **kwargs)
+
+    with patch("subprocess.run", side_effect=mock_subprocess_run):
+        ok, msg = init_one(target, ai_ops_sha=fresh_sha, dry_run=False)
+
+    assert ok, f"init_one failed: {msg}"
+    assert "text" in captured_written, "manifest was not written before PR"
+
+    written = HarnessManifest.from_toml(captured_written["text"])
+    assert written.ai_ops_sha == fresh_sha, (
+        f"expected ai_ops_sha={fresh_sha}, got {written.ai_ops_sha}"
+    )
+    # harness_files should be preserved from captured manifest as-is.
+    assert written.harness_files == {"AGENTS.md": "deadbeef"}
+    # last_sync should be updated to a recent ISO timestamp (not the 2026-01-01
+    # value from captured_text).
+    assert "2026-01-01" not in written.last_sync
+
+
 def test_init_one_dry_run_has_no_side_effects(tmp_path: Path) -> None:
     """`init_one(dry_run=True)` writes nothing and makes no git calls."""
     from ai_ops.propagate import InitHarnessTarget, init_one
