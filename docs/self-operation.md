@@ -63,6 +63,14 @@ python -m ai_ops promote-plan dogfood --source /path/to/local-plan.md --dry-run
 - Test: CLI behavior、audit rule、prompt assembly、packaging、OS-specific behavior を変える。
 - README / docs: user-facing entrypoint、operator-facing procedure、release-ready claim を変える。
 
+## Worktree-based Parallel Work (ADR 0010)
+
+非自明な作業を並行で進める / 進行中の作業を別ブランチで隔離したい場合、`ai-ops worktree-new <slug>` を使う。これは sibling 配置(`<repo-parent>/<repo-name>.<slug>/`)で git worktree を作成し、`<type>/<slug>` ブランチを切り、`docs/plans/<slug>/plan.md` の skeleton を seed する。1 plan : 1 branch : 1 worktree の binding が前提。
+
+実用上の上限は 1 repo あたり 3〜5 worktree。これ以上は context-switching cost が並列化のメリットを上回る(2026 業界 best practice)。
+
+完了後は `ai-ops worktree-cleanup` で「PR がマージされて、かつ plan が archived 済み」の worktree を一括 / 個別確認の上で削除。両方の signal が必要なのは Safety のため(片方だけだと誤削除リスクが高い)。
+
 ## Improvement Capture Loop
 
 ai-ops 自身の作業を Adopt する前に、active plan の `## Improvement Candidates` を triage する。各 candidate は次の enum に振り分ける:

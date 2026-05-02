@@ -41,6 +41,7 @@ REQUIRED_FILES = (
     "ai_ops/audit/projects.py",
     "ai_ops/bootstrap.py",
     "ai_ops/propagate.py",
+    "ai_ops/worktree.py",
 )
 
 CLASSIFICATION_TERMS = ("Fact", "Inference", "Risk", "User decision", "AI recommendation")
@@ -59,6 +60,8 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("propagate-anchor", "--help"),
     ("propagate-init", "--help"),
     ("propagate-files", "--help"),
+    ("worktree-new", "--help"),
+    ("worktree-cleanup", "--help"),
 )
 
 PLAN_STALE_DAYS = 30

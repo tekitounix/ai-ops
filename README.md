@@ -76,6 +76,8 @@ ai-ops doesn't ship a fixed template, but the prompts above expect a small set o
 | `ai-ops propagate-anchor (--all \| --project PATH) [--dry-run]` | Open PRs to bump `ai_ops_sha` in managed projects whose only drift is the anchor |
 | `ai-ops propagate-init (--all \| --project PATH) [--dry-run]` | Open PRs to commit `.ai-ops/harness.toml` from local working copy where the manifest exists on disk but is untracked |
 | `ai-ops propagate-files (--all \| --project PATH) [--dry-run]` | Open PRs to refresh `[harness_files]` hashes in `.ai-ops/harness.toml` so they match actual file content on the default branch (no file content is modified) |
+| `ai-ops worktree-new <slug> [--type TYPE]` | Create sibling worktree + branch + plan skeleton (ADR 0010); 1:1:1 binding between slug, branch, worktree |
+| `ai-ops worktree-cleanup [--auto]` | Remove worktrees whose branch's PR is merged AND plan is archived |
 
 `new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}` (T1 public / T2 private / T3 local), `--nix {auto,none,devshell,apps,full}` (default `auto`: AI decides via per-project rubric), `--output <path>`, `--dry-run`, `--interactive`.
 

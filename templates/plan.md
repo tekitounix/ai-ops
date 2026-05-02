@@ -4,6 +4,9 @@ This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, 
 
 Plan path: `docs/plans/<slug>/plan.md`. Archive path after adoption: `docs/plans/archive/YYYY-MM-DD-<slug>/`.
 
+Branch: `feat/<slug>` (default; pick `fix`/`chore`/`docs`/`refactor` if more appropriate).
+Worktree: `../<repo-name>.<slug>/` when parallel isolation is wanted (created via `ai-ops worktree-new <slug>`); `n/a` for trivial single-commit work.
+
 ## Purpose / Big Picture
 
 Explain what someone can do after this change that they could not do before. State the user-visible or operator-visible outcome and how to observe it working.

@@ -39,6 +39,9 @@ This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, 
 
 Plan path: `docs/plans/{slug}/plan.md`. Archive path after adoption: `docs/plans/archive/{date}-{slug}/`.
 
+Branch: `feat/{slug}` (default; pick `fix`/`chore`/`docs`/`refactor` if more appropriate).
+Worktree: `../<repo-name>.{slug}/` when parallel isolation is wanted (created via `ai-ops worktree-new {slug}`); `n/a` for trivial single-commit work.
+
 ## Purpose / Big Picture
 
 Promote a user-local AI plan into a repo-local, tool-agnostic execution plan so future agents can resume from Git-tracked context instead of tool-specific storage.

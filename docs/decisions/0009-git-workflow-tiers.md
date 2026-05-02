@@ -124,4 +124,9 @@ Out of scope (deferred):
 - ADR 0005: Nix optional reproducibility layer (precedent for tiered adoption).
 - ADR 0006: AI-first project lifecycle.
 - ADR 0008: Execution plan persistence.
+- ADR 0010: Worktree-based parallel work and plan binding — refines the
+  Tier B/C "feature branch + PR" expectation to "trunk-based + short-
+  lived branch + worktree per parallel task" per current (2026) industry
+  best practice. Long-lived branches are a Tier D acceptance, not a
+  Tier B norm.
 - `docs/plans/git-workflow-tiers/plan.md`: implementation plan.

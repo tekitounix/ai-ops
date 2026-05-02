@@ -77,7 +77,38 @@ ADR 0009 で定義した 4 tier (A/B/C/D) を、各 managed project が `.ai-ops
 
 ## Outcomes & Retrospective
 
-TBD。
+Shipped (commit `3bf812d`):
+
+- ADR 0009 起票 (`docs/decisions/0009-git-workflow-tiers.md`)
+- `HarnessManifest.workflow_tier` field 追加(default `"D"`、`"D"` 時は to_toml に出力されない、無効値は防御的に `"D"` に fallback)
+- `ai_ops/audit/workflow.py` 新規(`detect_tier_violations`、shallow + deep 切り替え)
+- `ProjectSignals.workflow_tier` / `tier_violations` 追加、JSON output、table column (`tier`/`tv`)、severity escalation(non-INFO violations → P1)
+- `_is_ai_ops_repo` 優先化(ai-ops 自身が `mgd="src"` のままで harness.toml を持てる)
+- ai-ops 自身に `.ai-ops/harness.toml` を追加、`workflow_tier = "A"` を declare(dogfood)
+- `realignment.md` Phase 1 / Phase 2 P0 doc-only に tier 議論を slot in
+- `projects-audit.md` の signal 表に `workflow_tier` / `tier_violations` 追記、severity 表に tier escalation 条件追記
+- tests: `test_audit_harness.py` に schema 4 件、`test_audit_workflow.py` 新規 6 件
+
+Verification:
+
+- `python -m ai_ops check` PASS、CI 5 ジョブすべて green。
+- `python -m pytest` 181 件 pass。
+- 実 use 確認:
+  - ai-ops 自身: `mgd=src tier=A tv=0 pri=P2` — 自宣言が機能、違反なし
+  - umipal: `mgd=yes tier=D tv=0 pri=P0` — Tier D デフォルト、違反なし(P0 は別 signal 由来)
+  - mi_share: `mgd=yes tier=D tv=1 pri=P1` — Tier D の INFO「manifest not on default」が正しく出る
+  - 他 4 managed projects: `tier=D tv=0` — Tier D デフォルトで違反なし
+
+What remains:
+
+- 6 managed projects は tier=D デフォルトのまま。各 project owner が realignment 時に明示的に declare(B/C/A 等)するのを待つ。これは Operation Model に従い、user judgment であって ai-ops が auto-propagate しない。
+- Deep tier violation 検出(direct-push-to-main、unreviewed merge)は実装済みだが現状 opt-in 経路がない(`--check-tier-violations` flag は plan で言及したが実装は別 increment)。
+- ai-ops 自身を Tier B に昇格するかは別 plan (Tier A での運用で事故が再発するか観察してから判断)。
+
+What should change in future plans:
+
+- ADR を起こした上で plan を起こす並列パターンが今回うまく機能した。次回以降、規範変更を伴う plan では同 commit で ADR + plan + 実装を出す形を継続する。
+- ai-ops 自身に harness.toml を持たせる構造変更は事前想定外で、`_is_ai_ops_repo` の判定優先順位の調整が必要だった。同様に「ai-ops が自分自身を管理対象として扱うパターン」が今後増える場合、`mgd` の semantic を再整理する余地あり。
 
 ## Improvement Candidates
 

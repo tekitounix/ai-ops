@@ -60,6 +60,8 @@ Subcommands:
 - `ai-ops propagate-anchor (--all | --project PATH) [--dry-run]` - open PRs that bump `.ai-ops/harness.toml`'s `ai_ops_sha` to the current ai-ops HEAD in managed projects whose only drift is the anchor (file content untouched). Worktree-isolated, per-project confirmation, never auto-merges.
 - `ai-ops propagate-init (--all | --project PATH) [--dry-run]` - open PRs that commit `.ai-ops/harness.toml` from the user's working copy in projects where the manifest exists on disk but is not yet tracked. Validates manifest parses before proposing.
 - `ai-ops propagate-files (--all | --project PATH) [--dry-run]` - open PRs that refresh `[harness_files]` hashes in `.ai-ops/harness.toml` to match actual file contents on the default branch. No file content is modified; only the manifest's hash records are updated. Other sections (`ai_ops_sha`, `last_sync`, `[project_checks]`, comments) are preserved verbatim.
+- `ai-ops worktree-new <slug> [--type TYPE] [--base BASE] [--dry-run]` - create a sibling git worktree (`<repo-parent>/<repo-name>.<slug>/`) bound 1:1:1 to a `<type>/<slug>` branch and a `docs/plans/<slug>/plan.md` skeleton (ADR 0010). Default `--type=feat`, `--base=main`.
+- `ai-ops worktree-cleanup [--auto] [--dry-run]` - remove worktrees whose branch's PR is merged AND whose plan is archived (both signals required). Default is per-worktree confirmation; `--auto` skips confirmation.
 
 `migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
 

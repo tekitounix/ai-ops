@@ -82,6 +82,10 @@ Brief を出したら停止する。何も実行しない。
 
 ## Phase 3 - Execute on Confirmation
 
+非自明な remediation や、複数 scope を並行で進める場合は、`ai-ops worktree-new <slug>` で隔離 worktree を作って実行することを推奨(ADR 0010)。1 scope : 1 plan : 1 branch : 1 worktree の binding により、後の review と cleanup がしやすくなる。実用上の上限は 1 repo あたり 3〜5 worktree。
+
+
+
 human が P0 / P1 / P2 を **個別に** approve するのを待つ。batch approval (一度の y/N で複数 scope を承認) は AGENTS.md Operation Model で禁じられている。
 
 各 approval ごとに:

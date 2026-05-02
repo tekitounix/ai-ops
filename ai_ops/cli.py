@@ -22,6 +22,12 @@ from ai_ops.propagate import (
     run_propagate_files,
     run_propagate_init,
 )
+from ai_ops.worktree import (
+    DEFAULT_BRANCH_TYPE,
+    VALID_BRANCH_TYPES,
+    run_worktree_cleanup,
+    run_worktree_new,
+)
 from ai_ops.lifecycle.project import build_project_prompt, draft_project_brief
 from ai_ops.models import MigrationSpec, ProjectSpec
 from ai_ops.paths import package_root
@@ -250,6 +256,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propagate_files.set_defaults(handler=handle_propagate_files)
 
+    wt_new = sub.add_parser(
+        "worktree-new",
+        help="Create a sibling git worktree + branch + plan skeleton (ADR 0010)",
+    )
+    wt_new.add_argument("slug", help="Plan slug (also used in branch + worktree path)")
+    wt_new.add_argument(
+        "--type", dest="branch_type", default=DEFAULT_BRANCH_TYPE,
+        choices=list(VALID_BRANCH_TYPES),
+        help=f"Branch type prefix (default: {DEFAULT_BRANCH_TYPE})",
+    )
+    wt_new.add_argument(
+        "--base", dest="base_branch", default="main",
+        help="Base branch to branch from (default: main)",
+    )
+    wt_new.add_argument("--dry-run", action="store_true")
+    wt_new.set_defaults(handler=handle_worktree_new)
+
+    wt_cleanup = sub.add_parser(
+        "worktree-cleanup",
+        help="Remove worktrees whose branch's PR is merged AND plan is archived (ADR 0010)",
+    )
+    wt_cleanup.add_argument(
+        "--auto", action="store_true",
+        help="Skip per-worktree confirmation; remove all eligible worktrees",
+    )
+    wt_cleanup.add_argument("--dry-run", action="store_true")
+    wt_cleanup.set_defaults(handler=handle_worktree_cleanup)
+
     return parser
 
 
@@ -400,6 +434,24 @@ def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+    )
+
+
+def handle_worktree_new(args: argparse.Namespace, root: Path) -> int:
+    return run_worktree_new(
+        slug=args.slug,
+        branch_type=args.branch_type,
+        base_branch=args.base_branch,
+        dry_run=args.dry_run,
+        cwd=root,
+    )
+
+
+def handle_worktree_cleanup(args: argparse.Namespace, root: Path) -> int:
+    return run_worktree_cleanup(
+        auto=args.auto,
+        dry_run=args.dry_run,
+        cwd=root,
     )
 
 
