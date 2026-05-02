@@ -17,7 +17,11 @@ from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
 from ai_ops.lifecycle.plans import run_promote_plan
-from ai_ops.propagate import run_propagate_anchor, run_propagate_init
+from ai_ops.propagate import (
+    run_propagate_anchor,
+    run_propagate_files,
+    run_propagate_init,
+)
 from ai_ops.lifecycle.project import build_project_prompt, draft_project_brief
 from ai_ops.models import MigrationSpec, ProjectSpec
 from ai_ops.paths import package_root
@@ -227,6 +231,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propagate_init.set_defaults(handler=handle_propagate_init)
 
+    propagate_files = sub.add_parser(
+        "propagate-files",
+        help="Open PRs that refresh [harness_files] hashes in managed projects",
+    )
+    pf_group = propagate_files.add_mutually_exclusive_group(required=True)
+    pf_group.add_argument(
+        "--all", dest="all_projects", action="store_true",
+        help="Process every managed project under ghq",
+    )
+    pf_group.add_argument(
+        "--project", type=Path,
+        help="Process a single project at the given path",
+    )
+    propagate_files.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would happen, write nothing, no network calls",
+    )
+    propagate_files.set_defaults(handler=handle_propagate_files)
+
     return parser
 
 
@@ -364,6 +387,15 @@ def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
 
 def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
     return run_propagate_init(
+        ai_ops_root=root,
+        project=args.project,
+        all_projects=args.all_projects,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
+    return run_propagate_files(
         ai_ops_root=root,
         project=args.project,
         all_projects=args.all_projects,

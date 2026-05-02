@@ -353,6 +353,37 @@ def _write_updated_manifest(
     manifest_path.write_text(new_text, encoding="utf-8")
 
 
+_HARNESS_FILES_SECTION_RE = re.compile(
+    r"(?ms)^\[harness_files\][^\[]*"
+)
+
+
+def _replace_harness_files_section(
+    text: str, new_files: dict[str, str],
+) -> str:
+    """Replace the entire `[harness_files]` block with fresh entries,
+    preserving everything else (comments, ai_ops_sha, last_sync, other
+    sections like `[project_checks]`).
+
+    The regex matches `[harness_files]` and everything up to (but not
+    including) the next top-level `[section]`. Since file paths in
+    harness_files are quoted strings (e.g., `"AGENTS.md" = "..."`) they
+    cannot contain `[`, so the bracket sentinel is unambiguous.
+    """
+    new_lines = ["[harness_files]"]
+    for path in sorted(new_files):
+        new_lines.append(f'"{path}" = "{new_files[path]}"')
+    # Trailing newline so subsequent sections start on their own line.
+    new_section = "\n".join(new_lines) + "\n"
+
+    if _HARNESS_FILES_SECTION_RE.search(text):
+        return _HARNESS_FILES_SECTION_RE.sub(new_section, text, count=1)
+    # No section yet: append at end (with leading blank line for visual
+    # separation from prior content).
+    suffix = "" if text.endswith("\n") else "\n"
+    return text + suffix + "\n" + new_section
+
+
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-C", str(cwd), *args],
@@ -721,6 +752,349 @@ def init_one(
 
     finally:
         _cleanup_worktree(target.project_path, worktree_path, branch)
+
+
+# ─────────────────────────────────────────────────────
+# files-sync propagation: refresh [harness_files] hashes
+# ─────────────────────────────────────────────────────
+
+
+@dataclasses.dataclass
+class FilesSyncTarget:
+    """A managed project where `[harness_files]` is out of sync with
+    actual file contents on the default branch."""
+
+    project_path: Path
+    default_branch: str
+    repo_full_name: str
+    expected_hashes: dict[str, str]  # what manifest says
+    actual_hashes: dict[str, str | None]  # what default branch actually has
+
+
+def _read_remote_file_hashes(
+    project: Path, ref: str, paths: tuple[str, ...],
+) -> dict[str, str | None]:
+    """Compute sha256 of each file on `ref`. Returns None for missing files."""
+    import hashlib
+    result: dict[str, str | None] = {}
+    for path in paths:
+        try:
+            cat = subprocess.run(
+                ["git", "-C", str(project), "cat-file", "-p", f"{ref}:{path}"],
+                capture_output=True, check=False, timeout=10,
+            )
+        except (subprocess.SubprocessError, OSError):
+            result[path] = None
+            continue
+        if cat.returncode != 0:
+            result[path] = None
+        else:
+            result[path] = hashlib.sha256(cat.stdout).hexdigest()
+    return result
+
+
+def _classify_files_drift(
+    expected: dict[str, str],
+    actual: dict[str, str | None],
+) -> tuple[list[str], list[str], list[str]]:
+    """Return (missing, modified, extra) lists.
+
+    - missing: in manifest, file no longer on disk
+    - modified: in both, hash differs
+    - extra: file on disk + in scope, but no entry in manifest
+    """
+    missing = [p for p in expected if actual.get(p) is None]
+    modified = [
+        p for p in expected
+        if actual.get(p) is not None and actual[p] != expected[p]
+    ]
+    extra = [
+        p for p in actual
+        if actual[p] is not None and p not in expected
+    ]
+    return missing, modified, extra
+
+
+def list_files_sync_targets(
+    ai_ops_root: Path,
+    project_paths: list[Path] | None = None,
+) -> tuple[list[FilesSyncTarget], list[SkipReason]]:
+    """Walk managed projects and return targets where remote default branch
+    has file content drift relative to its own `[harness_files]` manifest.
+
+    Drift is computed against `origin/<default>` snapshots, not local
+    working copies, so user uncommitted edits never leak into a PR.
+    """
+    if project_paths is None:
+        project_paths = _ghq_list_paths()
+
+    # Avoid circular import.
+    from ai_ops.audit.harness import DEFAULT_HARNESS_FILES
+
+    targets: list[FilesSyncTarget] = []
+    skips: list[SkipReason] = []
+
+    for project in project_paths:
+        if _is_ai_ops_repo(project):
+            continue
+
+        gh_meta = _gh_repo_metadata(project)
+        if gh_meta is None:
+            continue  # silent: not a GitHub repo, not in scope here
+        default_branch, repo_full_name = gh_meta
+
+        fetch = subprocess.run(
+            ["git", "-C", str(project), "fetch", "origin", default_branch],
+            capture_output=True, text=True, check=False, timeout=15,
+        )
+        if fetch.returncode != 0:
+            skips.append(SkipReason(
+                project,
+                f"git fetch origin {default_branch} failed",
+            ))
+            continue
+
+        if not _harness_toml_on_branch(project, f"origin/{default_branch}"):
+            continue  # silent: anchor-sync / init's territory
+
+        try:
+            cat = subprocess.run(
+                ["git", "-C", str(project), "cat-file", "-p",
+                 f"origin/{default_branch}:{HARNESS_MANIFEST}"],
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if cat.returncode != 0:
+                skips.append(SkipReason(
+                    project,
+                    f"could not read remote manifest",
+                ))
+                continue
+            remote_manifest = HarnessManifest.from_toml(cat.stdout)
+        except Exception as exc:
+            skips.append(SkipReason(
+                project, f"remote manifest parse failed: {exc}",
+            ))
+            continue
+
+        actual = _read_remote_file_hashes(
+            project, f"origin/{default_branch}", DEFAULT_HARNESS_FILES,
+        )
+        missing, modified, extra = _classify_files_drift(
+            remote_manifest.harness_files, actual,
+        )
+        if not (missing or modified or extra):
+            continue  # already in sync
+
+        targets.append(FilesSyncTarget(
+            project_path=project,
+            default_branch=default_branch,
+            repo_full_name=repo_full_name,
+            expected_hashes=dict(remote_manifest.harness_files),
+            actual_hashes=actual,
+        ))
+
+    return targets, skips
+
+
+def _files_sync_branch_name(ai_ops_sha: str) -> str:
+    return f"ai-ops/files-sync-{ai_ops_sha[:7]}"
+
+
+def _files_sync_pr_body(target: FilesSyncTarget) -> str:
+    missing, modified, extra = _classify_files_drift(
+        target.expected_hashes, target.actual_hashes,
+    )
+    summary_parts = []
+    if modified:
+        summary_parts.append(f"updated hashes for: {', '.join(sorted(modified))}")
+    if extra:
+        summary_parts.append(f"added entries for: {', '.join(sorted(extra))}")
+    if missing:
+        summary_parts.append(f"removed entries for: {', '.join(sorted(missing))}")
+    summary = "; ".join(summary_parts) if summary_parts else "no-op"
+    return f"""Auto-generated by `ai-ops propagate-files`.
+
+Refreshes `.ai-ops/harness.toml`'s `[harness_files]` table to match the
+actual file contents on the default branch. **No file content is
+modified** by this PR — only the manifest's hash records are updated so
+subsequent `ai-ops audit harness` runs reflect reality.
+
+Changes: {summary}.
+
+Other sections of the manifest (ai_ops_sha, last_sync, project_checks,
+header comments, etc.) are preserved verbatim.
+"""
+
+
+def files_sync_one(
+    target: FilesSyncTarget,
+    *,
+    ai_ops_sha: str,
+    dry_run: bool = False,
+    worktree_root: Path | None = None,
+) -> tuple[bool, str]:
+    """Open a PR that refreshes `[harness_files]` for one project."""
+    branch = _files_sync_branch_name(ai_ops_sha)
+    root = worktree_root or _default_worktree_root()
+    worktree_path = (
+        root / f"{target.project_path.name}-files-sync-{ai_ops_sha[:7]}"
+    )
+
+    if dry_run:
+        missing, modified, extra = _classify_files_drift(
+            target.expected_hashes, target.actual_hashes,
+        )
+        return True, (
+            f"[dry-run] would create branch {branch}, refresh harness_files "
+            f"(modified={len(modified)}, missing={len(missing)}, "
+            f"extra={len(extra)}), and open PR"
+        )
+
+    # Skip if open PR already exists.
+    try:
+        existing = subprocess.run(
+            ["gh", "pr", "list",
+             "--repo", target.repo_full_name,
+             "--head", branch,
+             "--state", "open",
+             "--json", "number"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if existing.returncode == 0 and existing.stdout.strip() not in ("", "[]"):
+            return True, f"PR for branch {branch} already exists — skipped"
+    except (subprocess.SubprocessError, OSError):
+        pass
+
+    try:
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        if worktree_path.exists():
+            return False, (
+                f"worktree path {worktree_path} already exists — "
+                f"remove with `git worktree remove --force` and retry"
+            )
+
+        wt = _run_git(
+            ["worktree", "add", "-b", branch, str(worktree_path),
+             f"origin/{target.default_branch}"],
+            target.project_path,
+        )
+        if wt.returncode != 0:
+            return False, f"git worktree add failed: {wt.stderr.strip()}"
+
+        # Build new harness_files dict from actual files in worktree.
+        new_files: dict[str, str] = {}
+        for path, h in target.actual_hashes.items():
+            if h is not None:
+                new_files[path] = h
+
+        manifest_path = worktree_path / HARNESS_MANIFEST
+        text = manifest_path.read_text(encoding="utf-8")
+        new_text = _replace_harness_files_section(text, new_files)
+        manifest_path.write_text(new_text, encoding="utf-8")
+
+        commit_msg = (
+            "chore(harness): refresh [harness_files] hashes\n\n"
+            "Auto-generated by `ai-ops propagate-files`. Updates the\n"
+            "manifest's `[harness_files]` table to match actual file\n"
+            "contents on the default branch. No file content was changed."
+        )
+        add = _run_git(["add", HARNESS_MANIFEST], worktree_path)
+        if add.returncode != 0:
+            return False, f"git add failed: {add.stderr.strip()}"
+        commit = _run_git(["commit", "-m", commit_msg], worktree_path)
+        if commit.returncode != 0:
+            return False, f"git commit failed: {commit.stderr.strip()}"
+
+        push = _run_git(["push", "-u", "origin", branch], worktree_path)
+        if push.returncode != 0:
+            return False, f"git push failed: {push.stderr.strip()}"
+
+        pr_title = "chore(harness): refresh [harness_files] hashes"
+        pr = subprocess.run(
+            ["gh", "pr", "create",
+             "--repo", target.repo_full_name,
+             "--base", target.default_branch,
+             "--head", branch,
+             "--title", pr_title,
+             "--body", _files_sync_pr_body(target)],
+            cwd=str(worktree_path),
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+        if pr.returncode != 0:
+            return False, f"gh pr create failed: {pr.stderr.strip()}"
+
+        return True, f"PR opened: {pr.stdout.strip()}"
+
+    finally:
+        _cleanup_worktree(target.project_path, worktree_path, branch)
+
+
+def run_propagate_files(
+    *,
+    ai_ops_root: Path,
+    project: Path | None = None,
+    all_projects: bool = False,
+    dry_run: bool = False,
+) -> int:
+    """Entry point for `ai-ops propagate-files`."""
+    if not project and not all_projects:
+        print("Error: specify --project <path> or --all", file=sys.stderr)
+        return 2
+
+    if not shutil.which("gh"):
+        print("Error: `gh` CLI is required (tier-1 ai-ops dependency)",
+              file=sys.stderr)
+        return 1
+
+    head_sha = _ai_ops_head_sha(ai_ops_root)
+    if not head_sha:
+        print("Error: could not determine ai-ops HEAD sha", file=sys.stderr)
+        return 1
+
+    project_paths = [project.resolve()] if project else None
+    targets, skips = list_files_sync_targets(ai_ops_root, project_paths)
+
+    if skips:
+        print("Skipped projects:")
+        for s in skips:
+            print(f"  - {s.project_path.name}: {s.reason}")
+        print()
+
+    if not targets:
+        print("No files-sync targets found.")
+        return 0
+
+    print(f"Files-sync targets ({len(targets)}):")
+    for t in targets:
+        missing, modified, extra = _classify_files_drift(
+            t.expected_hashes, t.actual_hashes,
+        )
+        print(f"  - {t.repo_full_name}: modified={len(modified)} "
+              f"missing={len(missing)} extra={len(extra)}")
+    print()
+
+    fail_count = 0
+    for t in targets:
+        if dry_run:
+            ok, msg = files_sync_one(
+                t, ai_ops_sha=head_sha, dry_run=True,
+            )
+            print(f"[{t.repo_full_name}] {msg}")
+            if not ok:
+                fail_count += 1
+            continue
+
+        if not _confirm(f"Refresh harness_files in {t.repo_full_name}? [y/N]: "):
+            print(f"[{t.repo_full_name}] skipped by user")
+            continue
+
+        ok, msg = files_sync_one(t, ai_ops_sha=head_sha, dry_run=False)
+        prefix = "OK" if ok else "FAIL"
+        print(f"[{t.repo_full_name}] {prefix}: {msg}")
+        if not ok:
+            fail_count += 1
+
+    return 1 if fail_count else 0
 
 
 def run_propagate_init(

@@ -601,6 +601,109 @@ def test_bump_anchor_appends_missing_fields() -> None:
     assert "[harness_files]" in new_text
 
 
+def test_replace_harness_files_section_preserves_other_sections() -> None:
+    """The [harness_files] replacement must preserve comments, ai_ops_sha,
+    last_sync, and any other TOML sections (notably [project_checks])."""
+    from ai_ops.propagate import _replace_harness_files_section
+
+    original = '''# Header comment that must survive
+# Another comment
+
+ai_ops_sha = "deadbeef"
+last_sync = "2026-04-30T03:00:00Z"
+
+[harness_files]
+"AGENTS.md" = "old_hash_1"
+"CLAUDE.md" = "old_hash_2"
+
+[project_checks]
+canonical = "python3 check.py"
+'''
+
+    new_text = _replace_harness_files_section(
+        original,
+        new_files={
+            "AGENTS.md": "new_hash_1",
+            "flake.nix": "new_hash_3",
+        },
+    )
+
+    # New entries are present.
+    assert '"AGENTS.md" = "new_hash_1"' in new_text
+    assert '"flake.nix" = "new_hash_3"' in new_text
+    # Old entries are gone.
+    assert "old_hash_1" not in new_text
+    assert "old_hash_2" not in new_text
+    assert "CLAUDE.md" not in new_text  # was in old, not in new
+    # Everything else preserved verbatim.
+    assert "# Header comment that must survive" in new_text
+    assert "# Another comment" in new_text
+    assert 'ai_ops_sha = "deadbeef"' in new_text
+    assert 'last_sync = "2026-04-30T03:00:00Z"' in new_text
+    assert "[project_checks]" in new_text
+    assert 'canonical = "python3 check.py"' in new_text
+
+
+def test_replace_harness_files_section_appends_when_missing() -> None:
+    """If [harness_files] doesn't exist, append a new section."""
+    from ai_ops.propagate import _replace_harness_files_section
+
+    original = 'ai_ops_sha = "abc"\nlast_sync = "x"\n'
+    new_text = _replace_harness_files_section(
+        original, new_files={"AGENTS.md": "h"},
+    )
+    assert "[harness_files]" in new_text
+    assert '"AGENTS.md" = "h"' in new_text
+    assert 'ai_ops_sha = "abc"' in new_text
+
+
+def test_classify_files_drift_categorises_correctly() -> None:
+    """Modified / missing / extra are classified per file."""
+    from ai_ops.propagate import _classify_files_drift
+
+    expected = {"a": "h1", "b": "h2", "c": "h3"}
+    actual = {"a": "h1", "b": "h2_NEW", "c": None, "d": "h4"}
+    missing, modified, extra = _classify_files_drift(expected, actual)
+    assert missing == ["c"]
+    assert modified == ["b"]
+    assert extra == ["d"]
+
+
+def test_files_sync_one_dry_run_has_no_side_effects(tmp_path: Path) -> None:
+    """`files_sync_one(..., dry_run=True)` must not write or call gh."""
+    from ai_ops.propagate import FilesSyncTarget, files_sync_one
+
+    project = _make_managed_project(
+        tmp_path, "files-dryrun",
+        ai_ops_sha="0000000000000000000000000000000000000000",
+    )
+    target = FilesSyncTarget(
+        project_path=project,
+        default_branch="main",
+        repo_full_name="owner/files-dryrun",
+        expected_hashes={"AGENTS.md": "old"},
+        actual_hashes={"AGENTS.md": "new"},
+    )
+
+    git_status_before = subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+
+    ok, msg = files_sync_one(
+        target, ai_ops_sha="abcdef0",
+        dry_run=True, worktree_root=tmp_path / "wt",
+    )
+
+    assert ok
+    assert "would create branch" in msg
+    git_status_after = subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert git_status_before == git_status_after
+
+
 def test_init_one_bumps_ai_ops_sha_to_passed_head(tmp_path: Path) -> None:
     """init_one must replace the captured ai_ops_sha with the current HEAD
     sha passed in, so the merged manifest doesn't appear stale immediately.
