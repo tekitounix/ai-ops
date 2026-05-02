@@ -487,6 +487,96 @@ def test_init_target_skips_invalid_manifest(tmp_path: Path) -> None:
     )
 
 
+def test_bump_anchor_preserves_comments_and_unknown_sections() -> None:
+    """anchor-bump must touch only ai_ops_sha and last_sync, leaving
+    comments, blank lines, and project-specific TOML sections intact.
+
+    Regression: earlier the anchor update round-tripped via
+    HarnessManifest.from_toml().to_toml(), which silently dropped umipal's
+    header comment block and entire `[project_checks]` section. Closing
+    PR #17 in umipal cost time; this test prevents the recurrence.
+    """
+    from ai_ops.propagate import _bump_anchor_in_manifest_text
+
+    original = '''# Header comment that must survive
+# Multiple lines
+
+ai_ops_sha = "0000000000000000000000000000000000000000"
+last_sync = "2026-04-30T03:00:00Z"
+
+[harness_files]
+"AGENTS.md" = "deadbeef"
+"flake.nix" = "cafebabe"
+
+[project_checks]
+canonical = "python3 .pipeline/tools/check.py"
+
+[project_checks.descriptions]
+canonical = "27 gate verification"
+'''
+
+    new_text = _bump_anchor_in_manifest_text(
+        original,
+        new_sha="abcdef1234567890abcdef1234567890abcdef12",
+        new_last_sync="2026-05-02T10:00:00+00:00",
+    )
+
+    # ai_ops_sha and last_sync must be updated.
+    assert 'ai_ops_sha = "abcdef1234567890abcdef1234567890abcdef12"' in new_text
+    assert 'last_sync = "2026-05-02T10:00:00+00:00"' in new_text
+    # Old values must be gone.
+    assert "0000000000000000000000000000000000000000" not in new_text
+    assert "2026-04-30T03:00:00Z" not in new_text
+    # Custom content must survive verbatim.
+    assert "# Header comment that must survive" in new_text
+    assert "# Multiple lines" in new_text
+    assert "[project_checks]" in new_text
+    assert "[project_checks.descriptions]" in new_text
+    assert 'canonical = "python3 .pipeline/tools/check.py"' in new_text
+    assert '"flake.nix" = "cafebabe"' in new_text
+
+
+def test_bump_anchor_preserves_blank_lines() -> None:
+    """The regex must not greedily eat newlines after the field value.
+
+    Regression: earlier `\\s*$` matched across multiple newlines, removing
+    the blank line between `last_sync` and `[harness_files]`. Use `[ \\t]*$`
+    to constrain trailing-whitespace to non-newline.
+    """
+    from ai_ops.propagate import _bump_anchor_in_manifest_text
+
+    original = (
+        'ai_ops_sha = "0000000000000000000000000000000000000000"\n'
+        'last_sync = "2026-04-30T03:00:00Z"\n'
+        '\n'
+        '[harness_files]\n'
+        '"AGENTS.md" = "deadbeef"\n'
+    )
+    new_text = _bump_anchor_in_manifest_text(
+        original,
+        new_sha="abcdef1234567890abcdef1234567890abcdef12",
+        new_last_sync="2026-05-02T10:00:00+00:00",
+    )
+    # The blank line between last_sync and [harness_files] must survive.
+    assert 'last_sync = "2026-05-02T10:00:00+00:00"\n\n[harness_files]' in new_text
+
+
+def test_bump_anchor_appends_missing_fields() -> None:
+    """If a manifest lacks ai_ops_sha entirely (legacy), the field is
+    inserted so the result is still valid TOML."""
+    from ai_ops.propagate import _bump_anchor_in_manifest_text
+
+    original = '[harness_files]\n"AGENTS.md" = "deadbeef"\n'
+    new_text = _bump_anchor_in_manifest_text(
+        original,
+        new_sha="abc1234",
+        new_last_sync="2026-05-02T10:00:00+00:00",
+    )
+    assert 'ai_ops_sha = "abc1234"' in new_text
+    assert 'last_sync = "2026-05-02T10:00:00+00:00"' in new_text
+    assert "[harness_files]" in new_text
+
+
 def test_init_one_bumps_ai_ops_sha_to_passed_head(tmp_path: Path) -> None:
     """init_one must replace the captured ai_ops_sha with the current HEAD
     sha passed in, so the merged manifest doesn't appear stale immediately.

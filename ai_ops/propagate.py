@@ -13,16 +13,12 @@ questions for a single-shot implementation.
 from __future__ import annotations
 
 import dataclasses
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover
-    import tomli as tomllib  # type: ignore
 
 from ai_ops.audit.harness import (
     HARNESS_MANIFEST,
@@ -257,9 +253,12 @@ def _branch_name(target: AnchorSyncTarget) -> str:
 
 
 def _pr_already_exists(target: AnchorSyncTarget) -> bool:
-    """True if a PR with the same head branch is already open or closed.
+    """True only if an OPEN PR with the same head branch already exists.
 
-    Avoids re-opening identical PRs after a previous propagation cycle.
+    Closed-not-merged PRs do NOT block re-creation: the previous attempt
+    might have been closed because of a propagator bug (as happened with
+    umipal's destructive PR) and the user / agent expects retry to work.
+    Merged PRs naturally block via "no commits to commit" downstream.
     """
     branch = _branch_name(target)
     try:
@@ -267,7 +266,7 @@ def _pr_already_exists(target: AnchorSyncTarget) -> bool:
             ["gh", "pr", "list",
              "--repo", target.repo_full_name,
              "--head", branch,
-             "--state", "all",
+             "--state", "open",
              "--json", "number"],
             capture_output=True,
             text=True,
@@ -300,19 +299,51 @@ Source: https://github.com/tekitounix/ai-ops/commit/{target.new_sha}
 """
 
 
+_AI_OPS_SHA_RE = re.compile(r'(?m)^ai_ops_sha[ \t]*=[ \t]*"[^"]*"[ \t]*$')
+_LAST_SYNC_RE = re.compile(r'(?m)^last_sync[ \t]*=[ \t]*"[^"]*"[ \t]*$')
+
+
+def _bump_anchor_in_manifest_text(
+    text: str, *, new_sha: str, new_last_sync: str,
+) -> str:
+    """Update `ai_ops_sha` and `last_sync` lines in a TOML manifest text,
+    preserving everything else: comments, blank lines, ordering, and any
+    project-specific sections (like `[project_checks]`).
+
+    Earlier code round-tripped via `HarnessManifest.from_toml().to_toml()`
+    which silently dropped comments and unknown sections — a real
+    regression that destroyed umipal's manifest header and project_checks
+    block. This regex approach is conservative: it touches only the two
+    lines it needs to.
+
+    If a field is missing entirely (legacy manifest), the line is appended
+    near the top so the file stays parseable.
+    """
+    new_text, n = _AI_OPS_SHA_RE.subn(f'ai_ops_sha = "{new_sha}"', text, count=1)
+    if n == 0:
+        new_text = f'ai_ops_sha = "{new_sha}"\n' + new_text
+    new_text, n = _LAST_SYNC_RE.subn(
+        f'last_sync = "{new_last_sync}"', new_text, count=1,
+    )
+    if n == 0:
+        # Insert after ai_ops_sha line.
+        new_text = _AI_OPS_SHA_RE.sub(
+            lambda m: f'{m.group(0)}\nlast_sync = "{new_last_sync}"',
+            new_text, count=1,
+        )
+    return new_text
+
+
 def _write_updated_manifest(
     manifest_path: Path,
     new_sha: str,
 ) -> None:
-    """Update only `ai_ops_sha` and `last_sync`, preserve `[harness_files]`."""
+    """Anchor-bump the manifest in-place, preserving custom content."""
     text = manifest_path.read_text(encoding="utf-8")
-    data = tomllib.loads(text)
-    manifest = HarnessManifest(
-        ai_ops_sha=new_sha,
-        last_sync=_now_iso(),
-        harness_files=dict(data.get("harness_files", {})),
+    new_text = _bump_anchor_in_manifest_text(
+        text, new_sha=new_sha, new_last_sync=_now_iso(),
     )
-    manifest_path.write_text(manifest.to_toml(), encoding="utf-8")
+    manifest_path.write_text(new_text, encoding="utf-8")
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -592,13 +623,15 @@ def init_one(
             f"and open PR titled 'chore(harness): init ai-ops harness manifest'"
         )
 
-    # Check for existing PR with same head.
+    # Check only for OPEN PRs with the same head — closed-not-merged
+    # should not block retry (a previous attempt may have been closed
+    # because of a bug fix in flight).
     try:
         existing = subprocess.run(
             ["gh", "pr", "list",
              "--repo", target.repo_full_name,
              "--head", branch,
-             "--state", "all",
+             "--state", "open",
              "--json", "number"],
             capture_output=True, text=True, check=False, timeout=10,
         )
@@ -624,23 +657,21 @@ def init_one(
             return False, f"git worktree add failed: {wt_result.stderr.strip()}"
 
         # Create .ai-ops/ and write manifest with ai_ops_sha bumped to
-        # current HEAD. Without the bump, the freshly merged manifest would
-        # immediately appear stale (since the captured manifest_text records
-        # whatever ai_ops_sha the user happened to be on when init scanned),
-        # forcing a follow-up anchor-sync PR. By bumping here, the init PR
-        # itself brings the project up to date.
+        # current HEAD. Use targeted text editing so the user's captured
+        # manifest content (custom comments, project_checks sections, etc.)
+        # is preserved verbatim — only ai_ops_sha and last_sync are touched.
         (worktree_path / ".ai-ops").mkdir(exist_ok=True)
         try:
-            captured = HarnessManifest.from_toml(target.manifest_text)
+            HarnessManifest.from_toml(target.manifest_text)  # validate
         except Exception as exc:
             return False, f"captured manifest invalid: {exc}"
-        bumped = HarnessManifest(
-            ai_ops_sha=ai_ops_sha,
-            last_sync=_now_iso(),
-            harness_files=captured.harness_files,
+        new_text = _bump_anchor_in_manifest_text(
+            target.manifest_text,
+            new_sha=ai_ops_sha,
+            new_last_sync=_now_iso(),
         )
         (worktree_path / HARNESS_MANIFEST).write_text(
-            bumped.to_toml(), encoding="utf-8",
+            new_text, encoding="utf-8",
         )
 
         commit_msg = (
