@@ -41,6 +41,7 @@ REQUIRED_FILES = (
     "ai_ops/audit/projects.py",
     "ai_ops/bootstrap.py",
     "ai_ops/propagate.py",
+    "ai_ops/report.py",
     "ai_ops/worktree.py",
 )
 
@@ -62,6 +63,7 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("propagate-files", "--help"),
     ("worktree-new", "--help"),
     ("worktree-cleanup", "--help"),
+    ("report-drift", "--help"),
 )
 
 PLAN_STALE_DAYS = 30

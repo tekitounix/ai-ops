@@ -22,6 +22,7 @@ from ai_ops.propagate import (
     run_propagate_files,
     run_propagate_init,
 )
+from ai_ops.report import run_report_drift
 from ai_ops.worktree import (
     DEFAULT_BRANCH_TYPE,
     VALID_BRANCH_TYPES,
@@ -297,6 +298,22 @@ def build_parser() -> argparse.ArgumentParser:
     wt_cleanup.add_argument("--dry-run", action="store_true")
     wt_cleanup.set_defaults(handler=handle_worktree_cleanup)
 
+    report_drift = sub.add_parser(
+        "report-drift",
+        help="Translate audit projects output into ai-ops repo sub-issues (ADR 0011)",
+    )
+    report_drift.add_argument(
+        "--repo", default="tekitounix/ai-ops",
+        help="ai-ops repo (owner/name) whose Issues host the dashboard "
+             "(default: tekitounix/ai-ops)",
+    )
+    report_drift.add_argument(
+        "--audit-json", type=Path, default=None,
+        help="Read audit projects JSON from this path instead of running it inline",
+    )
+    report_drift.add_argument("--dry-run", action="store_true")
+    report_drift.set_defaults(handler=handle_report_drift)
+
     return parser
 
 
@@ -468,6 +485,14 @@ def handle_worktree_cleanup(args: argparse.Namespace, root: Path) -> int:
         auto=args.auto,
         dry_run=args.dry_run,
         cwd=root,
+    )
+
+
+def handle_report_drift(args: argparse.Namespace, root: Path) -> int:
+    return run_report_drift(
+        ai_ops_repo=args.repo,
+        audit_json_path=args.audit_json,
+        dry_run=args.dry_run,
     )
 
 
