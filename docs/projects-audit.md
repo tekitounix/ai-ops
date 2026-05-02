@@ -46,6 +46,8 @@ Each row carries the nine signals that drive priority and sub-flow assignment:
 | `policy_drift` | `ok` / `stale` / `diverged` / `ahead-and-behind` / `no-anchor` / `n/a` — managed project's own `templates/plan.md` and active plans vs ai-ops canonical schema (`^## ` heading set). `n/a` = unmanaged or ai-ops itself. `no-anchor` = `harness.toml.ai_ops_sha` missing. `stale` = canonical has sections project lacks. `diverged` = project has extra sections. `ahead-and-behind` = both. AGENTS.md is intentionally not checked (project-specific contract). |
 | `pending_propagation_prs` | Count of open PRs whose head branch starts with `ai-ops/` in the project's GitHub repo (i.e., PRs created by `ai-ops propagate-anchor` or `ai-ops propagate-init`). `-1` indicates `gh` is unavailable so the count is unknown; `0` means no in-flight propagation work. Polls only managed projects to keep audit cheap. |
 | `remote_anchor_synced` | `true` / `false` / `null` — whether `origin/<default-branch>`'s `.ai-ops/harness.toml` carries `ai_ops_sha == current ai-ops HEAD`. `true` = propagation is done, `false` = anchor-sync PR would help, `null` = couldn't determine (no `gh`, fetch failed, or no manifest on default branch). When `true`, severity does not escalate to P1 just because local `harness_drift` is True (user merely needs to pull). |
+| `workflow_tier` | `A` / `B` / `C` / `D` — declared workflow tier per ADR 0009. `A` = trunk-based solo, `B` = managed feature-branch + PR, `C` = production / public with reviews, `D` = ad-hoc spike (default when `workflow_tier` field is missing from `harness.toml`). |
+| `tier_violations` | Human-readable strings for detected deviations from the declared tier. Empty list = clean. Cheap detections only by default (long-lived branches, manifest-not-on-default). Strings prefixed with `INFO:` are surfaced but do not escalate priority (Tier D's "manifest not on default" notice is INFO because user explicitly accepted that state). |
 
 Plus three derived flags the CLI computes once: `has_stack`, `is_docs_only`, `harness_drift`. Filenames only — secret **values** are never opened (the CLI's `_count_secret_files` is name-based).
 
@@ -69,7 +71,7 @@ The Brief is a Markdown document the agent assembles from the CLI's JSON output.
 | Priority | Trigger |
 |---|---|
 | **P0** | `loc=DRIFT` (project lives outside `~/ghq/`) OR `sec≥1` (secret-name file present) |
-| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift, OR `mgd=yes` with `policy_drift` ∈ {`stale`, `diverged`, `ahead-and-behind`, `no-anchor`}, OR last commit older than 540 days (~18 months) on a still-active stack |
+| **P1** | stack-bearing project with `nix=missing`, OR `mgd=yes` with harness drift, OR `mgd=yes` with `policy_drift` ∈ {`stale`, `diverged`, `ahead-and-behind`, `no-anchor`}, OR `mgd=yes` with non-INFO `tier_violations` present, OR last commit older than 540 days (~18 months) on a still-active stack |
 | **P2** | observation only: clean managed projects, validation fixtures (`mgd=no` and intentionally so), dirty work in progress, TODO churn |
 
 A project's priority is the highest it qualifies for; the JSON lists each project exactly once.

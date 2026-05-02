@@ -39,19 +39,26 @@ DEFAULT_HARNESS_FILES: tuple[str, ...] = (
 )
 
 
+VALID_WORKFLOW_TIERS: tuple[str, ...] = ("A", "B", "C", "D")
+
+
 @dataclasses.dataclass
 class HarnessManifest:
     ai_ops_sha: str
     harness_files: dict[str, str]  # relative path → sha256
     last_sync: str  # ISO 8601 UTC
+    workflow_tier: str = "D"  # A/B/C/D per ADR 0009; missing → D (most permissive)
 
     def to_toml(self) -> str:
         lines = [
             f'ai_ops_sha = "{self.ai_ops_sha}"',
             f'last_sync = "{self.last_sync}"',
-            "",
-            "[harness_files]",
         ]
+        # Only emit workflow_tier when not the default, to keep generated
+        # manifests minimal for projects that haven't declared a tier.
+        if self.workflow_tier != "D":
+            lines.append(f'workflow_tier = "{self.workflow_tier}"')
+        lines.extend(["", "[harness_files]"])
         for path in sorted(self.harness_files):
             lines.append(f'"{path}" = "{self.harness_files[path]}"')
         return "\n".join(lines) + "\n"
@@ -59,10 +66,16 @@ class HarnessManifest:
     @classmethod
     def from_toml(cls, text: str) -> "HarnessManifest":
         data = tomllib.loads(text)
+        tier_raw = str(data.get("workflow_tier", "D")).strip().upper()
+        # Defensive: an unknown tier value defaults back to D so audit
+        # can still reason about the project. Validation surfaces via the
+        # tier-violation detector, not via parser hard-fail.
+        tier = tier_raw if tier_raw in VALID_WORKFLOW_TIERS else "D"
         return cls(
             ai_ops_sha=data.get("ai_ops_sha", ""),
             last_sync=data.get("last_sync", ""),
             harness_files=dict(data.get("harness_files", {})),
+            workflow_tier=tier,
         )
 
 

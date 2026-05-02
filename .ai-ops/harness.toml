@@ -1,0 +1,15 @@
+# ai-ops self-managed harness manifest.
+#
+# ai-ops is the source-of-truth repo for the methodology, so its
+# `mgd` signal in `audit projects` is `src` (not `yes`). It is not the
+# target of `propagate-*` commands. The manifest exists here only to
+# declare the project's workflow tier per ADR 0009.
+
+ai_ops_sha = "f3c7f09957748c664b79ead21fbb6bb8fef86f35"
+last_sync = "2026-05-02T16:05:00+00:00"
+workflow_tier = "A"
+
+[harness_files]
+"AGENTS.md" = "d3c56745d7121353c613ab320f8cad50edba41cc3dfcd8c747dfb644c1d059ae"
+".envrc" = "c5bf3b90a9da8d0453a18bb43e94f2f64544e4fd1f649053e5cbeb5d74aa7ee1"
+"flake.nix" = "b7fa7c91d47df73391f5ba4f745192d4445dbddfca80b76b80d893677b017b58"

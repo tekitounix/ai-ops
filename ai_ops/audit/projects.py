@@ -94,6 +94,8 @@ class ProjectSignals:
     remote_anchor_synced: bool | None  # True iff origin/<default>'s harness.toml records ai_ops_sha == current ai-ops HEAD; None if unknown (offline, no remote, fetch failed)
     policy_drift: str  # "ok" | "stale" | "diverged" | "ahead-and-behind" | "no-anchor" | "n/a"
     pending_propagation_prs: int  # open PRs from `ai-ops/*` branches; -1 if `gh` unavailable
+    workflow_tier: str  # "A" | "B" | "C" | "D" (per ADR 0009; missing harness.toml → "D")
+    tier_violations: list[str]  # human-readable violations from declared tier; empty if clean
     priority: str  # "P0" | "P1" | "P2"
     sub_flow: str  # "relocate" | "migrate" | "realign" | "no-op"
 
@@ -470,12 +472,13 @@ def _detect_policy_drift(project_path: Path, ai_ops_root: Path) -> str:
 def collect_signals(path: Path) -> ProjectSignals:
     """Read-only signal collection for one project. Never writes."""
     loc = "ok" if _under_ghq_root(path) else "DRIFT"
-    if (path / HARNESS_MANIFEST).is_file():
-        mgd = "yes"
-    elif _is_ai_ops_repo(path):
-        # ai-ops itself is the methodology source — it does not seed a
-        # harness manifest because it *is* the harness.
+    # ai-ops takes precedence: even when it has its own `.ai-ops/harness.
+    # toml` (introduced for ADR 0009 tier declaration), it remains `src`
+    # — the methodology source, not a `propagate-*` target.
+    if _is_ai_ops_repo(path):
         mgd = "src"
+    elif (path / HARNESS_MANIFEST).is_file():
+        mgd = "yes"
     else:
         mgd = "no"
     flake_present = (path / "flake.nix").is_file()
@@ -513,6 +516,19 @@ def collect_signals(path: Path) -> ProjectSignals:
 
     policy_drift = _detect_policy_drift(path, ai_ops_root)
 
+    # Workflow tier: parsed from `.ai-ops/harness.toml` if present;
+    # default to "D" otherwise (most permissive, ADR 0009).
+    workflow_tier = "D"
+    if (path / HARNESS_MANIFEST).is_file():
+        try:
+            from ai_ops.audit.harness import HarnessManifest
+            mfst = HarnessManifest.from_toml(
+                (path / HARNESS_MANIFEST).read_text(encoding="utf-8")
+            )
+            workflow_tier = mfst.workflow_tier
+        except Exception:
+            workflow_tier = "D"
+
     # Pending propagation PRs (ai-ops/* branches). Cheap to query and only
     # for managed projects to keep the audit fast for large ghq trees.
     if mgd == "yes":
@@ -522,6 +538,32 @@ def collect_signals(path: Path) -> ProjectSignals:
         pending_prs = 0
         remote_synced = None
 
+    # Tier violations: cheap detections only (network deep checks are
+    # opt-in via a future flag; not surfaced from the default audit run).
+    tier_violations: list[str] = []
+    if mgd in ("yes", "src"):
+        try:
+            from ai_ops.audit.workflow import detect_tier_violations
+            # Default branch lookup is cheap when gh is available; pass
+            # None when not so the detector uses a sensible fallback.
+            default_branch_for_tier: str | None = None
+            try:
+                gh_meta = subprocess.run(
+                    ["gh", "repo", "view", "--json", "defaultBranchRef",
+                     "-q", ".defaultBranchRef.name"],
+                    cwd=str(path), capture_output=True, text=True,
+                    check=False, timeout=5,
+                )
+                if gh_meta.returncode == 0:
+                    default_branch_for_tier = gh_meta.stdout.strip() or None
+            except (subprocess.SubprocessError, OSError):
+                pass
+            tier_violations = detect_tier_violations(
+                path, workflow_tier, default_branch_for_tier, deep=False,
+            )
+        except Exception:
+            tier_violations = []
+
     # Priority assignment.
     # `harness_drift` reflects local working-copy state. After a propagate-*
     # PR is merged, local can still appear drifted until the user pulls —
@@ -530,12 +572,19 @@ def collect_signals(path: Path) -> ProjectSignals:
     # harness_drift alone should not escalate priority. When remote state is
     # unknown (None), fall back to treating local drift as P1 worthy.
     propagation_needed = harness_drift and remote_synced is not True
+    # Tier violations that aren't INFO-only escalate to P1. INFO entries
+    # (Tier D's "manifest not on default" notice) are surfaced but not
+    # priority-bumped because the user explicitly accepted that state.
+    tier_actionable = any(
+        not v.startswith("INFO:") for v in tier_violations
+    )
     if loc != "ok" or sec >= 1:
         priority = "P0"
     elif (
         (mgd == "no" and nix == "missing" and has_stack)
         or (mgd == "yes" and propagation_needed)
         or policy_drift in ("stale", "diverged", "ahead-and-behind", "no-anchor")
+        or tier_actionable
         or (
             age_days is not None
             and age_days > STALE_COMMIT_DAYS
@@ -598,6 +647,8 @@ def collect_signals(path: Path) -> ProjectSignals:
         remote_anchor_synced=remote_synced,
         policy_drift=policy_drift,
         pending_propagation_prs=pending_prs,
+        workflow_tier=workflow_tier,
+        tier_violations=tier_violations,
         priority=priority,
         sub_flow=sub_flow,
     )
@@ -627,6 +678,8 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "remote_anchor_synced": s.remote_anchor_synced,
         "policy_drift": s.policy_drift,
         "pending_propagation_prs": s.pending_propagation_prs,
+        "workflow_tier": s.workflow_tier,
+        "tier_violations": list(s.tier_violations),
         "priority": s.priority,
         "sub_flow": s.sub_flow,
     }
@@ -666,6 +719,8 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         ("pdr", 3),
         ("prs", 3),
         ("rsy", 3),
+        ("tier", 4),
+        ("tv", 3),
         ("pri", 3),
         ("sub-flow", 9),
     )
@@ -688,6 +743,8 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             rsy = "no"
         else:
             rsy = "-"
+        tier = s.workflow_tier or "D"
+        tv = str(len(s.tier_violations))
         row = (
             f"{proj:<28} "
             f"{path_short:<52} "
@@ -701,6 +758,8 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             f"{pdr:<3} "
             f"{prs:>3} "
             f"{rsy:<3} "
+            f"{tier:<4} "
+            f"{tv:>3} "
             f"{s.priority:<3} "
             f"{s.sub_flow:<9}"
         )

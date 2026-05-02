@@ -50,6 +50,54 @@ def test_manifest_toml_roundtrip(tmp_path: Path) -> None:
     assert m == m2
 
 
+def test_manifest_workflow_tier_default_is_d() -> None:
+    """A manifest with no workflow_tier field reads as Tier D (ADR 0009)."""
+    text = (
+        'ai_ops_sha = "x"\n'
+        'last_sync = "y"\n\n'
+        '[harness_files]\n'
+        '"AGENTS.md" = "h"\n'
+    )
+    m = harness.HarnessManifest.from_toml(text)
+    assert m.workflow_tier == "D"
+
+
+def test_manifest_workflow_tier_roundtrip_explicit() -> None:
+    """Non-default tier must roundtrip via to_toml/from_toml."""
+    m = harness.HarnessManifest(
+        ai_ops_sha="x", last_sync="y",
+        harness_files={"AGENTS.md": "h"}, workflow_tier="B",
+    )
+    text = m.to_toml()
+    assert 'workflow_tier = "B"' in text
+    m2 = harness.HarnessManifest.from_toml(text)
+    assert m2.workflow_tier == "B"
+    assert m == m2
+
+
+def test_manifest_workflow_tier_default_omitted_in_toml() -> None:
+    """Tier D (default) is intentionally not emitted to keep generated
+    manifests minimal for projects that haven't declared a tier."""
+    m = harness.HarnessManifest(
+        ai_ops_sha="x", last_sync="y",
+        harness_files={}, workflow_tier="D",
+    )
+    text = m.to_toml()
+    assert "workflow_tier" not in text
+
+
+def test_manifest_workflow_tier_invalid_falls_back_to_d() -> None:
+    """An unknown tier value defaults to D (defensive)."""
+    text = (
+        'ai_ops_sha = "x"\n'
+        'last_sync = "y"\n'
+        'workflow_tier = "Z"\n\n'
+        '[harness_files]\n'
+    )
+    m = harness.HarnessManifest.from_toml(text)
+    assert m.workflow_tier == "D"
+
+
 def test_detect_drift_no_manifest_with_files(tmp_path: Path) -> None:
     """No `.ai-ops/harness.toml` but harness file present → all reported as `extra`."""
     (tmp_path / "AGENTS.md").write_text("agents", encoding="utf-8")
