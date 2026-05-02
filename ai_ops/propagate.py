@@ -1044,8 +1044,14 @@ def run_propagate_files(
     project: Path | None = None,
     all_projects: bool = False,
     dry_run: bool = False,
+    auto_yes: bool = False,
 ) -> int:
-    """Entry point for `ai-ops propagate-files`."""
+    """Entry point for `ai-ops propagate-files`.
+
+    `auto_yes=True` skips per-project confirmation; intended for CI /
+    scheduled workflow execution where stdin is not interactive. The
+    user's prior approval is the workflow file itself.
+    """
     if not project and not all_projects:
         print("Error: specify --project <path> or --all", file=sys.stderr)
         return 2
@@ -1093,7 +1099,9 @@ def run_propagate_files(
                 fail_count += 1
             continue
 
-        if not _confirm(f"Refresh harness_files in {t.repo_full_name}? [y/N]: "):
+        if not auto_yes and not _confirm(
+            f"Refresh harness_files in {t.repo_full_name}? [y/N]: "
+        ):
             print(f"[{t.repo_full_name}] skipped by user")
             continue
 
@@ -1112,8 +1120,13 @@ def run_propagate_init(
     project: Path | None = None,
     all_projects: bool = False,
     dry_run: bool = False,
+    auto_yes: bool = False,
 ) -> int:
-    """Entry point for `ai-ops propagate-init`."""
+    """Entry point for `ai-ops propagate-init`.
+
+    `auto_yes=True` skips per-project confirmation; intended for CI /
+    scheduled workflow execution.
+    """
     if not project and not all_projects:
         print("Error: specify --project <path> or --all", file=sys.stderr)
         return 2
@@ -1155,7 +1168,9 @@ def run_propagate_init(
                 fail_count += 1
             continue
 
-        if not _confirm(f"Initialise harness in {t.repo_full_name}? [y/N]: "):
+        if not auto_yes and not _confirm(
+            f"Initialise harness in {t.repo_full_name}? [y/N]: "
+        ):
             print(f"[{t.repo_full_name}] skipped by user")
             continue
 
@@ -1174,12 +1189,14 @@ def run_propagate_anchor(
     project: Path | None = None,
     all_projects: bool = False,
     dry_run: bool = False,
+    auto_yes: bool = False,
 ) -> int:
     """Entry point for `ai-ops propagate-anchor`.
 
     Per-project confirmation (Y/n) is required for each target unless
-    `dry_run` is set. AGENTS.md Operation Model treats project-specific
-    harness overwrite as requiring per-project confirmation explicitly.
+    `dry_run` is set, OR `auto_yes` is set. The latter is intended for
+    CI / scheduled workflow execution where the workflow file itself
+    is the user's prior approval (per ADR 0011).
     """
     if not project and not all_projects:
         print(
@@ -1222,7 +1239,9 @@ def run_propagate_anchor(
                 fail_count += 1
             continue
 
-        if not _confirm(f"Propagate to {t.repo_full_name}? [y/N]: "):
+        if not auto_yes and not _confirm(
+            f"Propagate to {t.repo_full_name}? [y/N]: "
+        ):
             print(f"[{t.repo_full_name}] skipped by user")
             continue
 

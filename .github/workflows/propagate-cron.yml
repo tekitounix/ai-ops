@@ -1,0 +1,51 @@
+name: propagate-cron
+# ADR 0011: scheduled propagation of ai-ops improvements to managed
+# projects. Each propagator opens PRs (existing mechanism); user
+# reviews via standard GitHub Notifications.
+
+on:
+  schedule:
+    # Weekly: Tuesdays at 09:00 UTC (one day after ecosystem-watch so
+    # any new drift detected on Monday gets propagated on Tuesday).
+    - cron: '0 9 * * 2'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propagate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ai-ops
+        run: pip install -e .
+
+      - name: Verify gh CLI
+        run: gh --version
+
+      - name: Propagate anchor (bump ai_ops_sha)
+        # `--auto-yes` skips per-project Y/n confirmation; the workflow
+        # file itself is the user's prior approval per ADR 0011.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m ai_ops propagate-anchor --all --auto-yes || true
+
+      - name: Propagate init (commit untracked manifests)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m ai_ops propagate-init --all --auto-yes || true
+
+      - name: Propagate files (refresh harness_files hashes)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m ai_ops propagate-files --all --auto-yes || true

@@ -78,6 +78,10 @@ ai-ops doesn't ship a fixed template, but the prompts above expect a small set o
 | `ai-ops propagate-files (--all \| --project PATH) [--dry-run]` | Open PRs to refresh `[harness_files]` hashes in `.ai-ops/harness.toml` so they match actual file content on the default branch (no file content is modified) |
 | `ai-ops worktree-new <slug> [--type TYPE]` | Create sibling worktree + branch + plan skeleton (ADR 0010); 1:1:1 binding between slug, branch, worktree |
 | `ai-ops worktree-cleanup [--auto]` | Remove worktrees whose branch's PR is merged AND plan is archived |
+| `ai-ops report-drift [--repo OWNER/NAME]` | Translate `audit projects --json` output into ai-ops-repo Issues / sub-issues for the Ecosystem dashboard (ADR 0011) |
+| `ai-ops setup-ci-workflow --project PATH [--tier T]` | PR adding `.github/workflows/ai-ops.yml` (drift gate) to a managed project |
+| `ai-ops setup-codeowners --project PATH [--owner USER]` | PR adding `.github/CODEOWNERS` routing ai-ops changes to project owner |
+| `ai-ops setup-ruleset --project PATH --tier {A,B,C}` | Apply Repository Ruleset (PR + status checks per tier) via `gh api` |
 
 `new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}` (T1 public / T2 private / T3 local), `--nix {auto,none,devshell,apps,full}` (default `auto`: AI decides via per-project rubric), `--output <path>`, `--dry-run`, `--interactive`.
 

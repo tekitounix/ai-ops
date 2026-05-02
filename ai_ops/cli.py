@@ -22,6 +22,13 @@ from ai_ops.propagate import (
     run_propagate_files,
     run_propagate_init,
 )
+from ai_ops.report import run_report_drift
+from ai_ops.setup import (
+    VALID_TIERS,
+    run_setup_ci_workflow,
+    run_setup_codeowners,
+    run_setup_ruleset,
+)
 from ai_ops.worktree import (
     DEFAULT_BRANCH_TYPE,
     VALID_BRANCH_TYPES,
@@ -216,6 +223,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
     )
+    propagate_anchor.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation; the workflow file invoking "
+             "this command is treated as the user's prior approval (ADR 0011)",
+    )
     propagate_anchor.set_defaults(handler=handle_propagate_anchor)
 
     propagate_init = sub.add_parser(
@@ -235,6 +247,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
     )
+    propagate_init.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation (CI use; ADR 0011)",
+    )
     propagate_init.set_defaults(handler=handle_propagate_init)
 
     propagate_files = sub.add_parser(
@@ -253,6 +269,10 @@ def build_parser() -> argparse.ArgumentParser:
     propagate_files.add_argument(
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
+    )
+    propagate_files.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation (CI use; ADR 0011)",
     )
     propagate_files.set_defaults(handler=handle_propagate_files)
 
@@ -283,6 +303,71 @@ def build_parser() -> argparse.ArgumentParser:
     )
     wt_cleanup.add_argument("--dry-run", action="store_true")
     wt_cleanup.set_defaults(handler=handle_worktree_cleanup)
+
+    report_drift = sub.add_parser(
+        "report-drift",
+        help="Translate audit projects output into ai-ops repo sub-issues (ADR 0011)",
+    )
+    report_drift.add_argument(
+        "--repo", default="tekitounix/ai-ops",
+        help="ai-ops repo (owner/name) whose Issues host the dashboard "
+             "(default: tekitounix/ai-ops)",
+    )
+    report_drift.add_argument(
+        "--audit-json", type=Path, default=None,
+        help="Read audit projects JSON from this path instead of running it inline",
+    )
+    report_drift.add_argument("--dry-run", action="store_true")
+    report_drift.set_defaults(handler=handle_report_drift)
+
+    setup_ci = sub.add_parser(
+        "setup-ci-workflow",
+        help="Open a PR adding `.github/workflows/ai-ops.yml` to a project (ADR 0011)",
+    )
+    setup_ci.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_ci.add_argument(
+        "--tier", default="D", choices=list(VALID_TIERS) + ["D"],
+        help="Tier (A/B/C/D) — sets `tier:` input in the workflow caller",
+    )
+    setup_ci.add_argument(
+        "--ai-ops-ref", dest="ai_ops_ref", default="main",
+        help="ai-ops branch / tag the workflow will install from (default: main)",
+    )
+    setup_ci.add_argument("--dry-run", action="store_true")
+    setup_ci.set_defaults(handler=handle_setup_ci_workflow)
+
+    setup_co = sub.add_parser(
+        "setup-codeowners",
+        help="Open a PR adding `.github/CODEOWNERS` for ai-ops routing (ADR 0011)",
+    )
+    setup_co.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_co.add_argument(
+        "--owner", default=None,
+        help="GitHub username to route reviews to (default: project's repo owner)",
+    )
+    setup_co.add_argument("--dry-run", action="store_true")
+    setup_co.set_defaults(handler=handle_setup_codeowners)
+
+    setup_rs = sub.add_parser(
+        "setup-ruleset",
+        help="Apply a tier ruleset via gh api (creates / updates) (ADR 0011)",
+    )
+    setup_rs.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_rs.add_argument(
+        "--tier", required=True, choices=list(VALID_TIERS),
+        help="Tier (A/B/C) — selects the ruleset profile",
+    )
+    setup_rs.add_argument("--dry-run", action="store_true")
+    setup_rs.set_defaults(handler=handle_setup_ruleset)
 
     return parser
 
@@ -416,6 +501,7 @@ def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
@@ -425,6 +511,7 @@ def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
@@ -434,6 +521,7 @@ def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
@@ -452,6 +540,39 @@ def handle_worktree_cleanup(args: argparse.Namespace, root: Path) -> int:
         auto=args.auto,
         dry_run=args.dry_run,
         cwd=root,
+    )
+
+
+def handle_report_drift(args: argparse.Namespace, root: Path) -> int:
+    return run_report_drift(
+        ai_ops_repo=args.repo,
+        audit_json_path=args.audit_json,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_ci_workflow(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_ci_workflow(
+        project=args.project.resolve(),
+        tier=args.tier,
+        ai_ops_ref=args.ai_ops_ref,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_codeowners(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_codeowners(
+        project=args.project.resolve(),
+        owner=args.owner,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_ruleset(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_ruleset(
+        project=args.project.resolve(),
+        tier=args.tier,
+        dry_run=args.dry_run,
     )
 
 

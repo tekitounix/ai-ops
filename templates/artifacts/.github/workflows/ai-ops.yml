@@ -1,0 +1,22 @@
+name: ai-ops
+# Per-project caller of the ai-ops reusable workflow.
+# Distributed by `ai-ops setup-ci-workflow`.
+# Bump `@v1` (or pin a SHA) to control the ai-ops version this project uses.
+
+on:
+  pull_request:
+    paths:
+      - '.ai-ops/**'
+      - 'AGENTS.md'
+      - '.github/workflows/ai-ops.yml'
+  schedule:
+    # Daily drift check at 09:00 UTC.
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    uses: tekitounix/ai-ops/.github/workflows/managed-project-check.yml@v1
+    with:
+      tier: 'D'  # set to A/B/C/D per your project's tier
+      ai_ops_ref: 'main'  # or a release tag like 'v0.1.0'

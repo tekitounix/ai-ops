@@ -57,11 +57,15 @@ Subcommands:
 - `ai-ops audit security` - secret scan (works in any cwd).
 - `ai-ops check` - all audits + pytest.
 - `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` - read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.
-- `ai-ops propagate-anchor (--all | --project PATH) [--dry-run]` - open PRs that bump `.ai-ops/harness.toml`'s `ai_ops_sha` to the current ai-ops HEAD in managed projects whose only drift is the anchor (file content untouched). Worktree-isolated, per-project confirmation, never auto-merges.
-- `ai-ops propagate-init (--all | --project PATH) [--dry-run]` - open PRs that commit `.ai-ops/harness.toml` from the user's working copy in projects where the manifest exists on disk but is not yet tracked. Validates manifest parses before proposing.
-- `ai-ops propagate-files (--all | --project PATH) [--dry-run]` - open PRs that refresh `[harness_files]` hashes in `.ai-ops/harness.toml` to match actual file contents on the default branch. No file content is modified; only the manifest's hash records are updated. Other sections (`ai_ops_sha`, `last_sync`, `[project_checks]`, comments) are preserved verbatim.
+- `ai-ops propagate-anchor (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that bump `.ai-ops/harness.toml`'s `ai_ops_sha` to the current ai-ops HEAD in managed projects whose only drift is the anchor (file content untouched). Worktree-isolated, per-project confirmation by default; `--auto-yes` skips confirmation for CI use (ADR 0011).
+- `ai-ops propagate-init (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that commit `.ai-ops/harness.toml` from the user's working copy in projects where the manifest exists on disk but is not yet tracked. Validates manifest parses before proposing.
+- `ai-ops propagate-files (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that refresh `[harness_files]` hashes in `.ai-ops/harness.toml` to match actual file contents on the default branch. No file content is modified; only the manifest's hash records are updated. Other sections (`ai_ops_sha`, `last_sync`, `[project_checks]`, comments) are preserved verbatim.
 - `ai-ops worktree-new <slug> [--type TYPE] [--base BASE] [--dry-run]` - create a sibling git worktree (`<repo-parent>/<repo-name>.<slug>/`) bound 1:1:1 to a `<type>/<slug>` branch and a `docs/plans/<slug>/plan.md` skeleton (ADR 0010). Default `--type=feat`, `--base=main`.
 - `ai-ops worktree-cleanup [--auto] [--dry-run]` - remove worktrees whose branch's PR is merged AND whose plan is archived (both signals required). Default is per-worktree confirmation; `--auto` skips confirmation.
+- `ai-ops report-drift [--repo OWNER/NAME] [--audit-json PATH] [--dry-run]` - translate `audit projects --json` output into ai-ops-repo Issues / sub-issues for the Ecosystem dashboard (ADR 0011). Invoked from `.github/workflows/ecosystem-watch.yml` on schedule.
+- `ai-ops setup-ci-workflow --project PATH [--tier {A,B,C,D}] [--ai-ops-ref REF] [--dry-run]` - open a PR adding `.github/workflows/ai-ops.yml` (caller of the reusable `managed-project-check.yml`) to a managed project (ADR 0011).
+- `ai-ops setup-codeowners --project PATH [--owner GH_USER] [--dry-run]` - open a PR adding `.github/CODEOWNERS` that routes ai-ops-related changes to the project owner.
+- `ai-ops setup-ruleset --project PATH --tier {A,B,C} [--dry-run]` - apply a tier ruleset via `gh api repos/.../rulesets` (upserts existing or creates new). Tier D = no ruleset.
 
 `migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
 
