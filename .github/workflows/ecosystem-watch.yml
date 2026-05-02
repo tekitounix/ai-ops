@@ -1,0 +1,46 @@
+name: ecosystem-watch
+# ADR 0011: scheduled drift detection across managed projects.
+# Runs `audit projects --json` then `report-drift` to keep the
+# Ecosystem dashboard (Issues + sub-issues) in sync with reality.
+
+on:
+  schedule:
+    # Weekly: Mondays at 09:00 UTC. Adjust to taste.
+    - cron: '0 9 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ai-ops
+        run: pip install -e .
+
+      - name: Install gh (Ubuntu has it pre-installed; verify)
+        run: gh --version
+
+      - name: Run audit projects
+        # `audit projects` exits 1 when P0/P1 remain — this is normal,
+        # not an error. Capture JSON regardless.
+        run: |
+          python -m ai_ops audit projects --json > /tmp/audit.json || true
+          echo "--- audit summary ---"
+          jq -r '.[] | select(.mgd == "yes") | "\(.project)\tpri=\(.priority)\tpolicy_drift=\(.policy_drift)\tharness_drift=\(.harness_drift)"' /tmp/audit.json
+
+      - name: Reflect drift into Issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m ai_ops report-drift \
+            --repo ${{ github.repository }} \
+            --audit-json /tmp/audit.json

@@ -1,0 +1,42 @@
+name: managed-project-check
+# ADR 0011: reusable workflow used by each managed project's
+# `.github/workflows/ai-ops.yml`. Runs ai-ops audits against the
+# calling project on PR + schedule. Tier B+ should require this as
+# a status check via repository ruleset.
+
+on:
+  workflow_call:
+    inputs:
+      tier:
+        description: "Workflow tier (A/B/C/D) per ADR 0009"
+        type: string
+        default: 'D'
+      ai_ops_ref:
+        description: "ai-ops branch / tag to install (default: main)"
+        type: string
+        default: 'main'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling project
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ai-ops from source
+        run: |
+          pip install "git+https://github.com/tekitounix/ai-ops@${{ inputs.ai_ops_ref }}"
+
+      - name: Audit harness (strict)
+        # Strict mode FAILs on any drift; Tier B/C ruleset uses this as
+        # required status check.
+        run: |
+          ai-ops audit harness --strict
+
+      - name: Inform tier
+        run: |
+          echo "::notice::ai-ops checked at tier ${{ inputs.tier }}"

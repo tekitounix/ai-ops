@@ -23,6 +23,12 @@ from ai_ops.propagate import (
     run_propagate_init,
 )
 from ai_ops.report import run_report_drift
+from ai_ops.setup import (
+    VALID_TIERS,
+    run_setup_ci_workflow,
+    run_setup_codeowners,
+    run_setup_ruleset,
+)
 from ai_ops.worktree import (
     DEFAULT_BRANCH_TYPE,
     VALID_BRANCH_TYPES,
@@ -314,6 +320,55 @@ def build_parser() -> argparse.ArgumentParser:
     report_drift.add_argument("--dry-run", action="store_true")
     report_drift.set_defaults(handler=handle_report_drift)
 
+    setup_ci = sub.add_parser(
+        "setup-ci-workflow",
+        help="Open a PR adding `.github/workflows/ai-ops.yml` to a project (ADR 0011)",
+    )
+    setup_ci.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_ci.add_argument(
+        "--tier", default="D", choices=list(VALID_TIERS) + ["D"],
+        help="Tier (A/B/C/D) — sets `tier:` input in the workflow caller",
+    )
+    setup_ci.add_argument(
+        "--ai-ops-ref", dest="ai_ops_ref", default="main",
+        help="ai-ops branch / tag the workflow will install from (default: main)",
+    )
+    setup_ci.add_argument("--dry-run", action="store_true")
+    setup_ci.set_defaults(handler=handle_setup_ci_workflow)
+
+    setup_co = sub.add_parser(
+        "setup-codeowners",
+        help="Open a PR adding `.github/CODEOWNERS` for ai-ops routing (ADR 0011)",
+    )
+    setup_co.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_co.add_argument(
+        "--owner", default=None,
+        help="GitHub username to route reviews to (default: project's repo owner)",
+    )
+    setup_co.add_argument("--dry-run", action="store_true")
+    setup_co.set_defaults(handler=handle_setup_codeowners)
+
+    setup_rs = sub.add_parser(
+        "setup-ruleset",
+        help="Apply a tier ruleset via gh api (creates / updates) (ADR 0011)",
+    )
+    setup_rs.add_argument(
+        "--project", type=Path, required=True,
+        help="Path to the managed project (must be a GitHub repo)",
+    )
+    setup_rs.add_argument(
+        "--tier", required=True, choices=list(VALID_TIERS),
+        help="Tier (A/B/C) — selects the ruleset profile",
+    )
+    setup_rs.add_argument("--dry-run", action="store_true")
+    setup_rs.set_defaults(handler=handle_setup_ruleset)
+
     return parser
 
 
@@ -492,6 +547,31 @@ def handle_report_drift(args: argparse.Namespace, root: Path) -> int:
     return run_report_drift(
         ai_ops_repo=args.repo,
         audit_json_path=args.audit_json,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_ci_workflow(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_ci_workflow(
+        project=args.project.resolve(),
+        tier=args.tier,
+        ai_ops_ref=args.ai_ops_ref,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_codeowners(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_codeowners(
+        project=args.project.resolve(),
+        owner=args.owner,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_setup_ruleset(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_ruleset(
+        project=args.project.resolve(),
+        tier=args.tier,
         dry_run=args.dry_run,
     )
 

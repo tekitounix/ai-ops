@@ -31,6 +31,14 @@ REQUIRED_FILES = (
     "templates/artifacts/.envrc",
     "templates/artifacts/renovate.json",
     "templates/artifacts/update-flake-lock.yml",
+    "templates/artifacts/.github/workflows/ai-ops.yml",
+    "templates/artifacts/CODEOWNERS.template",
+    "templates/artifacts/rulesets/tier-a.json",
+    "templates/artifacts/rulesets/tier-b.json",
+    "templates/artifacts/rulesets/tier-c.json",
+    ".github/workflows/ecosystem-watch.yml",
+    ".github/workflows/propagate-cron.yml",
+    ".github/workflows/managed-project-check.yml",
     "pyproject.toml",
     "setup.py",
     ".github/workflows/ci.yml",
@@ -42,6 +50,7 @@ REQUIRED_FILES = (
     "ai_ops/bootstrap.py",
     "ai_ops/propagate.py",
     "ai_ops/report.py",
+    "ai_ops/setup.py",
     "ai_ops/worktree.py",
 )
 
@@ -64,6 +73,9 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("worktree-new", "--help"),
     ("worktree-cleanup", "--help"),
     ("report-drift", "--help"),
+    ("setup-ci-workflow", "--help"),
+    ("setup-codeowners", "--help"),
+    ("setup-ruleset", "--help"),
 )
 
 PLAN_STALE_DAYS = 30
@@ -417,6 +429,11 @@ def run_lifecycle_audit(root: Path) -> int:
         root / "templates" / "artifacts" / ".envrc",
         root / "templates" / "artifacts" / "renovate.json",
         root / "templates" / "artifacts" / "update-flake-lock.yml",
+        root / "templates" / "artifacts" / ".github" / "workflows" / "ai-ops.yml",
+        root / "templates" / "artifacts" / "CODEOWNERS.template",
+        root / "templates" / "artifacts" / "rulesets" / "tier-a.json",
+        root / "templates" / "artifacts" / "rulesets" / "tier-b.json",
+        root / "templates" / "artifacts" / "rulesets" / "tier-c.json",
     }
     template_root = root / "templates"
     if template_root.exists():
