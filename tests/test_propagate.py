@@ -158,6 +158,30 @@ def test_target_list_skips_when_no_gh_metadata(tmp_path: Path) -> None:
     )
 
 
+def _add_self_origin(project: Path) -> str:
+    """Add a bare-clone of `project` as `origin`, fetch, and return the
+    detected default branch name. Lets tests exercise the
+    `_harness_toml_on_branch` check without a real remote."""
+    bare = project.parent / f"{project.name}-bare.git"
+    subprocess.run(
+        ["git", "clone", "--bare", "-q", str(project), str(bare)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "remote", "add", "origin", str(bare)],
+        check=True,
+    )
+    branch = subprocess.run(
+        ["git", "-C", str(project), "branch", "--show-current"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "-C", str(project), "fetch", "-q", "origin"],
+        check=True,
+    )
+    return branch
+
+
 def test_target_list_includes_drifted_managed_project(tmp_path: Path) -> None:
     """A managed project with only ai_ops_sha drift is a valid target."""
     from ai_ops.propagate import list_anchor_sync_targets
@@ -167,10 +191,11 @@ def test_target_list_includes_drifted_managed_project(tmp_path: Path) -> None:
         tmp_path, "drifted",
         ai_ops_sha="0000000000000000000000000000000000000000",
     )
+    default_branch = _add_self_origin(project)
 
     with patch(
         "ai_ops.propagate._gh_repo_metadata",
-        return_value=("main", "owner/drifted"),
+        return_value=(default_branch, "owner/drifted"),
     ):
         targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
 
@@ -180,7 +205,7 @@ def test_target_list_includes_drifted_managed_project(tmp_path: Path) -> None:
     assert target.current_sha == "0000000000000000000000000000000000000000"
     # new_sha should be the actual ai-ops HEAD (40-char hex)
     assert len(target.new_sha) == 40
-    assert target.default_branch == "main"
+    assert target.default_branch == default_branch
     assert target.repo_full_name == "owner/drifted"
 
 
@@ -271,6 +296,90 @@ def test_run_propagate_anchor_requires_argument() -> None:
     assert rc != 0
 
 
+def test_target_list_skips_when_manifest_only_on_feature_branch(
+    tmp_path: Path,
+) -> None:
+    """If `.ai-ops/harness.toml` is committed only on a feature branch and
+    not on the default branch, anchor-sync must skip — branching from default
+    would find no manifest to update.
+
+    Regression: real-world run on paasukusai/mi_share crashed because the
+    file was on `repo-restructure` branch only, never merged to `master`.
+    The earlier check (`ls-files --error-unmatch`) ran against current HEAD
+    and incorrectly returned True.
+    """
+    from ai_ops.propagate import list_anchor_sync_targets
+
+    ai_ops_root = Path(__file__).resolve().parent.parent
+
+    # Set up a project with manifest on a feature branch only.
+    project = tmp_path / "feat-only"
+    project.mkdir()
+    _git_init_committed(project, name="readme")
+    # Default branch is set by `git init` (could be main or master); take it
+    # from the current branch name after init.
+    default_branch_result = subprocess.run(
+        ["git", "-C", str(project), "branch", "--show-current"],
+        capture_output=True, text=True, check=True,
+    )
+    default_branch = default_branch_result.stdout.strip()
+
+    # Switch to a feature branch and commit harness.toml there.
+    subprocess.run(
+        ["git", "-C", str(project), "checkout", "-q", "-b", "feature"],
+        check=True,
+    )
+    (project / ".ai-ops").mkdir()
+    (project / "AGENTS.md").write_text("agents\n", encoding="utf-8")
+    from ai_ops.audit.harness import HarnessManifest, _sha256
+    files_hashes = {"AGENTS.md": _sha256(project / "AGENTS.md")}
+    manifest = HarnessManifest(
+        ai_ops_sha="0000000000000000000000000000000000000000",
+        last_sync="2026-04-29T00:00:00+00:00",
+        harness_files=files_hashes,
+    )
+    (project / ".ai-ops" / "harness.toml").write_text(
+        manifest.to_toml(), encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "add", "AGENTS.md", ".ai-ops/harness.toml"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "commit", "-q", "-m", "feat harness"],
+        check=True,
+    )
+
+    # Add an "origin" remote pointing to itself, then create origin/<default_branch>
+    # as a copy of the default branch (which doesn't have harness.toml).
+    bare = tmp_path / "feat-only-bare.git"
+    subprocess.run(
+        ["git", "clone", "--bare", "-q", str(project), str(bare)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "remote", "add", "origin", str(bare)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "fetch", "-q", "origin"],
+        check=True,
+    )
+
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/feat-only"),
+    ):
+        targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
+
+    assert targets == []
+    assert any(
+        f"absent on origin/{default_branch}" in s.reason
+        and s.project_path == project
+        for s in skips
+    ), f"expected skip with 'absent on origin/{default_branch}' but got: {skips}"
+
+
 def test_run_propagate_anchor_dry_run_lists_targets(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -282,10 +391,11 @@ def test_run_propagate_anchor_dry_run_lists_targets(
         tmp_path, "dryrun-e2e",
         ai_ops_sha="0000000000000000000000000000000000000000",
     )
+    default_branch = _add_self_origin(project)
 
     with patch(
         "ai_ops.propagate._gh_repo_metadata",
-        return_value=("main", "owner/dryrun-e2e"),
+        return_value=(default_branch, "owner/dryrun-e2e"),
     ):
         # `gh` shutil.which check inside run_propagate_anchor still requires
         # gh in PATH; skip if not available.

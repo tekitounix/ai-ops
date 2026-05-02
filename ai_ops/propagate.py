@@ -60,10 +60,38 @@ class SkipReason:
 
 
 def _harness_toml_is_tracked(project: Path) -> bool:
-    """Returns True if `.ai-ops/harness.toml` is tracked in git (not untracked)."""
+    """Returns True if `.ai-ops/harness.toml` is tracked in git (not untracked).
+
+    Checks against the current HEAD/index. Use `_harness_toml_on_branch` to
+    verify presence on a specific remote branch (which is what matters for
+    PR base selection).
+    """
     try:
         result = subprocess.run(
             ["git", "-C", str(project), "ls-files", "--error-unmatch", HARNESS_MANIFEST],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def _harness_toml_on_branch(project: Path, ref: str) -> bool:
+    """Returns True if `.ai-ops/harness.toml` exists on the given ref.
+
+    Critical for anchor-sync: the PR's base branch must contain the manifest,
+    otherwise the worktree branched from base won't have the file to update.
+    Real-world bug surfaced this: a project committed `.ai-ops/harness.toml`
+    only on a feature branch, never merged to default — anchor-sync attempted
+    to branch from `origin/master` and crashed because the file was absent.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project), "cat-file", "-e",
+             f"{ref}:{HARNESS_MANIFEST}"],
             capture_output=True,
             text=True,
             check=False,
@@ -171,6 +199,32 @@ def list_anchor_sync_targets(
             ))
             continue
 
+        default_branch, repo_full_name = gh_meta
+
+        # Fetch the default branch so we can verify the manifest is present
+        # there. Without this, a manifest committed only on a feature branch
+        # (never merged to default) would crash anchor_sync_one when the
+        # worktree branched from origin/<default> finds no harness.toml.
+        fetch = subprocess.run(
+            ["git", "-C", str(project), "fetch", "origin", default_branch],
+            capture_output=True, text=True, check=False, timeout=15,
+        )
+        if fetch.returncode != 0:
+            skips.append(SkipReason(
+                project,
+                f"git fetch origin {default_branch} failed: "
+                f"{fetch.stderr.strip()[:80]}",
+            ))
+            continue
+
+        if not _harness_toml_on_branch(project, f"origin/{default_branch}"):
+            skips.append(SkipReason(
+                project,
+                f".ai-ops/harness.toml absent on origin/{default_branch} — "
+                f"merge it to {default_branch} first",
+            ))
+            continue
+
         try:
             manifest = HarnessManifest.from_toml(
                 manifest_path.read_text(encoding="utf-8")
@@ -183,8 +237,8 @@ def list_anchor_sync_targets(
             project_path=project,
             current_sha=manifest.ai_ops_sha,
             new_sha=head_sha,
-            default_branch=gh_meta[0],
-            repo_full_name=gh_meta[1],
+            default_branch=default_branch,
+            repo_full_name=repo_full_name,
         ))
 
     return targets, skips
