@@ -92,6 +92,7 @@ class ProjectSignals:
     is_docs_only: bool  # ≥ 85% of tracked files are doc / image suffixes
     harness_drift: bool  # mgd=yes and detect_drift reports any drift
     policy_drift: str  # "ok" | "stale" | "diverged" | "ahead-and-behind" | "no-anchor" | "n/a"
+    pending_propagation_prs: int  # open PRs from `ai-ops/*` branches; -1 if `gh` unavailable
     priority: str  # "P0" | "P1" | "P2"
     sub_flow: str  # "relocate" | "migrate" | "realign" | "no-op"
 
@@ -264,6 +265,35 @@ def _under_ghq_root(path: Path) -> bool:
         return False
 
 
+def _count_pending_propagation_prs(path: Path) -> int:
+    """Count open PRs whose head branch starts with `ai-ops/`.
+
+    Returns -1 when `gh` is unavailable or the call fails — distinguishing
+    "no gh" from "0 PRs" so the table can show `-` vs `0` accurately.
+    Skip pattern is non-fatal so audit projects works offline.
+    """
+    if not shutil.which("gh"):
+        return -1
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list",
+             "--state", "open",
+             "--search", "head:ai-ops/",
+             "--json", "number"],
+            cwd=str(path),
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if result.returncode != 0:
+            return -1
+        out = result.stdout.strip()
+        if out in ("", "[]"):
+            return 0
+        # Quick count by counting `"number":` occurrences instead of parsing.
+        return out.count('"number"')
+    except (subprocess.SubprocessError, OSError):
+        return -1
+
+
 def _is_ai_ops_repo(path: Path) -> bool:
     """ai-ops itself is the source-of-truth repo for the methodology, not a
     consumer that seeds `.ai-ops/harness.toml`. Detect by structural shape
@@ -398,6 +428,13 @@ def collect_signals(path: Path) -> ProjectSignals:
 
     policy_drift = _detect_policy_drift(path, ai_ops_root)
 
+    # Pending propagation PRs (ai-ops/* branches). Cheap to query and only
+    # for managed projects to keep the audit fast for large ghq trees.
+    if mgd == "yes":
+        pending_prs = _count_pending_propagation_prs(path)
+    else:
+        pending_prs = 0
+
     # Priority assignment
     if loc != "ok" or sec >= 1:
         priority = "P0"
@@ -465,6 +502,7 @@ def collect_signals(path: Path) -> ProjectSignals:
         is_docs_only=docs_only,
         harness_drift=harness_drift,
         policy_drift=policy_drift,
+        pending_propagation_prs=pending_prs,
         priority=priority,
         sub_flow=sub_flow,
     )
@@ -492,6 +530,7 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "is_docs_only": s.is_docs_only,
         "harness_drift": s.harness_drift,
         "policy_drift": s.policy_drift,
+        "pending_propagation_prs": s.pending_propagation_prs,
         "priority": s.priority,
         "sub_flow": s.sub_flow,
     }
@@ -529,6 +568,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         ("last", 14),
         ("todo", 4),
         ("pdr", 3),
+        ("prs", 3),
         ("pri", 3),
         ("sub-flow", 9),
     )
@@ -544,6 +584,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             else s.last_commit_human
         )
         pdr = _POLICY_DRIFT_SHORT.get(s.policy_drift, s.policy_drift[:3])
+        prs = "-" if s.pending_propagation_prs < 0 else str(s.pending_propagation_prs)
         row = (
             f"{proj:<28} "
             f"{path_short:<52} "
@@ -555,6 +596,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             f"{last:<14} "
             f"{s.todo:>4} "
             f"{pdr:<3} "
+            f"{prs:>3} "
             f"{s.priority:<3} "
             f"{s.sub_flow:<9}"
         )

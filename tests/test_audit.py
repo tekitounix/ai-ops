@@ -413,6 +413,54 @@ def test_outcomes_filled_recognises_substantive_content(tmp_path: Path) -> None:
     assert _outcomes_filled(text) is True
 
 
+def test_count_pending_propagation_prs_returns_minus_one_without_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When `gh` is missing, return -1 (distinguish from 0 PRs)."""
+    from ai_ops.audit.projects import _count_pending_propagation_prs
+
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    assert _count_pending_propagation_prs(tmp_path) == -1
+
+
+def test_count_pending_propagation_prs_handles_empty_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When `gh pr list` returns `[]`, count is 0."""
+    from ai_ops.audit.projects import _count_pending_propagation_prs
+    import subprocess as _subprocess
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/gh")
+
+    class FakeResult:
+        returncode = 0
+        stdout = "[]"
+
+    monkeypatch.setattr(
+        _subprocess, "run", lambda *a, **kw: FakeResult(),
+    )
+    assert _count_pending_propagation_prs(tmp_path) == 0
+
+
+def test_count_pending_propagation_prs_counts_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When `gh pr list` returns multiple entries, count them by `"number"` key."""
+    from ai_ops.audit.projects import _count_pending_propagation_prs
+    import subprocess as _subprocess
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/gh")
+
+    class FakeResult:
+        returncode = 0
+        stdout = '[{"number":1},{"number":2},{"number":3}]'
+
+    monkeypatch.setattr(
+        _subprocess, "run", lambda *a, **kw: FakeResult(),
+    )
+    assert _count_pending_propagation_prs(tmp_path) == 3
+
+
 def test_outcomes_tbd_recognises_various_forms(tmp_path: Path) -> None:
     """`TBD`, `TBD.`, `TBD。`, `TBD ...`, `TBD,...` should all be detected."""
     from ai_ops.audit.lifecycle import _outcomes_still_tbd
