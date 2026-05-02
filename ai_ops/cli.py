@@ -17,7 +17,7 @@ from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
 from ai_ops.lifecycle.plans import run_promote_plan
-from ai_ops.propagate import run_propagate_anchor
+from ai_ops.propagate import run_propagate_anchor, run_propagate_init
 from ai_ops.lifecycle.project import build_project_prompt, draft_project_brief
 from ai_ops.models import MigrationSpec, ProjectSpec
 from ai_ops.paths import package_root
@@ -208,6 +208,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propagate_anchor.set_defaults(handler=handle_propagate_anchor)
 
+    propagate_init = sub.add_parser(
+        "propagate-init",
+        help="Open PRs that commit untracked .ai-ops/harness.toml in managed projects",
+    )
+    pi_group = propagate_init.add_mutually_exclusive_group(required=True)
+    pi_group.add_argument(
+        "--all", dest="all_projects", action="store_true",
+        help="Process every managed project under ghq",
+    )
+    pi_group.add_argument(
+        "--project", type=Path,
+        help="Process a single project at the given path",
+    )
+    propagate_init.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would happen, write nothing, no network calls",
+    )
+    propagate_init.set_defaults(handler=handle_propagate_init)
+
     return parser
 
 
@@ -336,6 +355,15 @@ def handle_promote_plan(args: argparse.Namespace, root: Path) -> int:
 
 def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
     return run_propagate_anchor(
+        ai_ops_root=root,
+        project=args.project,
+        all_projects=args.all_projects,
+        dry_run=args.dry_run,
+    )
+
+
+def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
+    return run_propagate_init(
         ai_ops_root=root,
         project=args.project,
         all_projects=args.all_projects,

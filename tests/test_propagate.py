@@ -380,6 +380,128 @@ def test_target_list_skips_when_manifest_only_on_feature_branch(
     ), f"expected skip with 'absent on origin/{default_branch}' but got: {skips}"
 
 
+def _make_untracked_manifest_project(
+    tmp_path: Path,
+    name: str,
+) -> Path:
+    """Create a project with a valid `.ai-ops/harness.toml` on disk that
+    is NOT tracked in git (the exact gap propagate-init handles)."""
+    project = tmp_path / name
+    project.mkdir()
+    _git_init_committed(project, name="readme")  # initial commit for default branch
+
+    (project / ".ai-ops").mkdir()
+    (project / "AGENTS.md").write_text("agents\n", encoding="utf-8")
+    from ai_ops.audit.harness import HarnessManifest, _sha256
+    files_hashes = {"AGENTS.md": _sha256(project / "AGENTS.md")}
+    manifest = HarnessManifest(
+        ai_ops_sha="0000000000000000000000000000000000000000",
+        last_sync="2026-04-29T00:00:00+00:00",
+        harness_files=files_hashes,
+    )
+    (project / ".ai-ops" / "harness.toml").write_text(
+        manifest.to_toml(), encoding="utf-8",
+    )
+    # Note: harness.toml is NOT git add'd — that's the whole point.
+    return project
+
+
+def test_init_target_includes_untracked_manifest(tmp_path: Path) -> None:
+    """Project with `.ai-ops/harness.toml` on disk but untracked → init target."""
+    from ai_ops.propagate import list_init_targets
+
+    ai_ops_root = Path(__file__).resolve().parent.parent
+    project = _make_untracked_manifest_project(tmp_path, "init-candidate")
+    default_branch = _add_self_origin(project)
+
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/init-candidate"),
+    ):
+        targets, skips = list_init_targets(ai_ops_root, [project])
+
+    assert len(targets) == 1
+    assert targets[0].project_path == project
+    assert targets[0].repo_full_name == "owner/init-candidate"
+    assert "ai_ops_sha = \"0000" in targets[0].manifest_text
+
+
+def test_init_target_skips_tracked_manifest(tmp_path: Path) -> None:
+    """Project with manifest already tracked → not an init target (anchor's job)."""
+    from ai_ops.propagate import list_init_targets
+
+    ai_ops_root = Path(__file__).resolve().parent.parent
+    project = _make_managed_project(
+        tmp_path, "tracked",
+        ai_ops_sha="0000000000000000000000000000000000000000",
+    )
+    default_branch = _add_self_origin(project)
+
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/tracked"),
+    ):
+        targets, skips = list_init_targets(ai_ops_root, [project])
+
+    assert targets == []  # already tracked → not init's job
+    # No skip surfaced either (it's silently out of init's scope, not an issue).
+
+
+def test_init_target_skips_invalid_manifest(tmp_path: Path) -> None:
+    """`.ai-ops/harness.toml` that doesn't parse → skipped with reason."""
+    from ai_ops.propagate import list_init_targets
+
+    ai_ops_root = Path(__file__).resolve().parent.parent
+    project = tmp_path / "invalid-mfst"
+    project.mkdir()
+    _git_init_committed(project, name="readme")
+    (project / ".ai-ops").mkdir()
+    (project / ".ai-ops" / "harness.toml").write_text(
+        "not = valid toml [[[\n", encoding="utf-8",
+    )
+    default_branch = _add_self_origin(project)
+
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/invalid-mfst"),
+    ):
+        targets, skips = list_init_targets(ai_ops_root, [project])
+
+    assert targets == []
+    assert any(
+        "invalid" in s.reason and s.project_path == project
+        for s in skips
+    )
+
+
+def test_init_one_dry_run_has_no_side_effects(tmp_path: Path) -> None:
+    """`init_one(dry_run=True)` writes nothing and makes no git calls."""
+    from ai_ops.propagate import InitHarnessTarget, init_one
+
+    project = _make_untracked_manifest_project(tmp_path, "dryrun-init")
+    target = InitHarnessTarget(
+        project_path=project,
+        default_branch="main",
+        repo_full_name="owner/dryrun-init",
+        manifest_text="ai_ops_sha = \"0000\"\n",
+    )
+
+    git_status_before = subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+
+    ok, msg = init_one(target, ai_ops_sha="abcdef0123456789", dry_run=True)
+
+    assert ok is True
+    assert "would create branch" in msg
+    git_status_after = subprocess.run(
+        ["git", "-C", str(project), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert git_status_before == git_status_after
+
+
 def test_run_propagate_anchor_dry_run_lists_targets(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
