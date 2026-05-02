@@ -96,6 +96,8 @@ class ProjectSignals:
     pending_propagation_prs: int  # open PRs from `ai-ops/*` branches; -1 if `gh` unavailable
     workflow_tier: str  # "A" | "B" | "C" | "D" (per ADR 0009; missing harness.toml → "D")
     tier_violations: list[str]  # human-readable violations from declared tier; empty if clean
+    has_ai_ops_workflow: bool  # `.github/workflows/ai-ops.yml` exists (ADR 0011)
+    has_codeowners_routing: bool  # `.github/CODEOWNERS` references `.ai-ops/` (ADR 0011)
     priority: str  # "P0" | "P1" | "P2"
     sub_flow: str  # "relocate" | "migrate" | "realign" | "no-op"
 
@@ -564,6 +566,18 @@ def collect_signals(path: Path) -> ProjectSignals:
         except Exception:
             tier_violations = []
 
+    # GitHub-native artifact presence (ADR 0011). Cheap file checks; no
+    # network calls. Surface via JSON / table so user sees which managed
+    # projects have which artifacts deployed.
+    has_ai_ops_workflow = (path / ".github" / "workflows" / "ai-ops.yml").is_file()
+    has_codeowners_routing = False
+    co_path = path / ".github" / "CODEOWNERS"
+    if co_path.is_file():
+        try:
+            has_codeowners_routing = ".ai-ops" in co_path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            has_codeowners_routing = False
+
     # Priority assignment.
     # `harness_drift` reflects local working-copy state. After a propagate-*
     # PR is merged, local can still appear drifted until the user pulls —
@@ -649,6 +663,8 @@ def collect_signals(path: Path) -> ProjectSignals:
         pending_propagation_prs=pending_prs,
         workflow_tier=workflow_tier,
         tier_violations=tier_violations,
+        has_ai_ops_workflow=has_ai_ops_workflow,
+        has_codeowners_routing=has_codeowners_routing,
         priority=priority,
         sub_flow=sub_flow,
     )
@@ -680,6 +696,8 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "pending_propagation_prs": s.pending_propagation_prs,
         "workflow_tier": s.workflow_tier,
         "tier_violations": list(s.tier_violations),
+        "has_ai_ops_workflow": s.has_ai_ops_workflow,
+        "has_codeowners_routing": s.has_codeowners_routing,
         "priority": s.priority,
         "sub_flow": s.sub_flow,
     }
