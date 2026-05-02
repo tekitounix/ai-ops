@@ -45,6 +45,7 @@ Each row carries the nine signals that drive priority and sub-flow assignment:
 | `agents_md` | AGENTS.md present at root |
 | `policy_drift` | `ok` / `stale` / `diverged` / `ahead-and-behind` / `no-anchor` / `n/a` — managed project's own `templates/plan.md` and active plans vs ai-ops canonical schema (`^## ` heading set). `n/a` = unmanaged or ai-ops itself. `no-anchor` = `harness.toml.ai_ops_sha` missing. `stale` = canonical has sections project lacks. `diverged` = project has extra sections. `ahead-and-behind` = both. AGENTS.md is intentionally not checked (project-specific contract). |
 | `pending_propagation_prs` | Count of open PRs whose head branch starts with `ai-ops/` in the project's GitHub repo (i.e., PRs created by `ai-ops propagate-anchor` or `ai-ops propagate-init`). `-1` indicates `gh` is unavailable so the count is unknown; `0` means no in-flight propagation work. Polls only managed projects to keep audit cheap. |
+| `remote_anchor_synced` | `true` / `false` / `null` — whether `origin/<default-branch>`'s `.ai-ops/harness.toml` carries `ai_ops_sha == current ai-ops HEAD`. `true` = propagation is done, `false` = anchor-sync PR would help, `null` = couldn't determine (no `gh`, fetch failed, or no manifest on default branch). When `true`, severity does not escalate to P1 just because local `harness_drift` is True (user merely needs to pull). |
 
 Plus three derived flags the CLI computes once: `has_stack`, `is_docs_only`, `harness_drift`. Filenames only — secret **values** are never opened (the CLI's `_count_secret_files` is name-based).
 

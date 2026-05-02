@@ -73,7 +73,7 @@ def _make_managed_project(
 
 
 def test_target_list_skips_unmanaged_project(tmp_path: Path) -> None:
-    """Project without `.ai-ops/harness.toml` is skipped with a clear reason."""
+    """Project where `gh` returns no metadata is skipped with a clear reason."""
     from ai_ops.propagate import list_anchor_sync_targets
 
     project = tmp_path / "unmanaged"
@@ -82,59 +82,72 @@ def test_target_list_skips_unmanaged_project(tmp_path: Path) -> None:
 
     ai_ops_root = Path(__file__).resolve().parent.parent
 
-    targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
+    with patch("ai_ops.propagate._gh_repo_metadata", return_value=None):
+        targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
 
     assert targets == []
     assert any(
-        "no .ai-ops/harness.toml" in s.reason and s.project_path == project
+        "GitHub" in s.reason and s.project_path == project
         for s in skips
     )
 
 
-def test_target_list_skips_when_manifest_untracked(tmp_path: Path) -> None:
-    """`.ai-ops/harness.toml` present but untracked is skipped (PR impossible)."""
+def test_target_list_skips_when_manifest_absent_from_default_branch(
+    tmp_path: Path,
+) -> None:
+    """A project whose default branch doesn't carry `.ai-ops/harness.toml`
+    is skipped (use propagate-init first)."""
     from ai_ops.propagate import list_anchor_sync_targets
 
-    project = _make_managed_project(
-        tmp_path, "untracked-mfst",
-        ai_ops_sha="0000000000000000000000000000000000000000",
-        track_manifest=False,
-    )
+    project = tmp_path / "no-mfst-on-default"
+    project.mkdir()
+    _git_init_committed(project)
+    default_branch = _add_self_origin(project)
 
     ai_ops_root = Path(__file__).resolve().parent.parent
 
-    targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/no-mfst-on-default"),
+    ):
+        targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
 
     assert targets == []
     assert any(
-        "untracked" in s.reason and s.project_path == project
+        "absent on origin/" in s.reason and s.project_path == project
         for s in skips
     )
 
 
-def test_target_list_skips_when_files_have_drift(tmp_path: Path) -> None:
-    """A project with file content drift is skipped (anchor-sync alone unsafe).
+def test_target_list_proceeds_when_local_untracked_but_remote_has_it(
+    tmp_path: Path,
+) -> None:
+    """After init PR is merged, local working copy may still have manifest
+    untracked locally. Anchor-sync should still target the project as long
+    as origin/<default> has the manifest with a stale ai_ops_sha.
 
-    If `[harness_files]` hashes don't match disk, anchor-sync would lie
-    about the synced state. Defer to the harness-files-sync plan.
+    Regression: earlier `_harness_toml_is_tracked` check rejected this case
+    even though the merged remote state was perfectly valid.
     """
     from ai_ops.propagate import list_anchor_sync_targets
 
     ai_ops_root = Path(__file__).resolve().parent.parent
+    # Set up project with manifest committed (default branch has it).
     project = _make_managed_project(
-        tmp_path, "files-drifted",
+        tmp_path, "remote-has-mfst",
         ai_ops_sha="0000000000000000000000000000000000000000",
     )
-    # Modify AGENTS.md after manifest commit so detect_drift reports it.
-    (project / "AGENTS.md").write_text("modified\n", encoding="utf-8")
+    default_branch = _add_self_origin(project)
 
-    targets, skips = list_anchor_sync_targets(ai_ops_root, [project])
+    with patch(
+        "ai_ops.propagate._gh_repo_metadata",
+        return_value=(default_branch, "owner/remote-has-mfst"),
+    ):
+        targets, _ = list_anchor_sync_targets(ai_ops_root, [project])
 
-    assert targets == []
-    assert any(
-        "file drift present" in s.reason and s.project_path == project
-        for s in skips
-    )
+    assert len(targets) == 1
+    assert targets[0].project_path == project
+    assert targets[0].current_sha == "0000000000000000000000000000000000000000"
 
 
 def test_target_list_skips_when_no_gh_metadata(tmp_path: Path) -> None:

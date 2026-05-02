@@ -90,7 +90,8 @@ class ProjectSignals:
     agents_md: bool  # AGENTS.md present at root
     has_stack: bool  # any stack marker present
     is_docs_only: bool  # ≥ 85% of tracked files are doc / image suffixes
-    harness_drift: bool  # mgd=yes and detect_drift reports any drift
+    harness_drift: bool  # mgd=yes and detect_drift reports any drift (LOCAL working copy)
+    remote_anchor_synced: bool | None  # True iff origin/<default>'s harness.toml records ai_ops_sha == current ai-ops HEAD; None if unknown (offline, no remote, fetch failed)
     policy_drift: str  # "ok" | "stale" | "diverged" | "ahead-and-behind" | "no-anchor" | "n/a"
     pending_propagation_prs: int  # open PRs from `ai-ops/*` branches; -1 if `gh` unavailable
     priority: str  # "P0" | "P1" | "P2"
@@ -294,6 +295,90 @@ def _count_pending_propagation_prs(path: Path) -> int:
         return -1
 
 
+def _remote_anchor_synced(
+    project: Path,
+    ai_ops_root: Path,
+) -> bool | None:
+    """True iff origin/<default-branch>'s `.ai-ops/harness.toml` carries
+    `ai_ops_sha == current ai-ops HEAD`.
+
+    Returns None when the answer can't be determined (`gh` missing, no
+    GitHub remote, fetch failure, no manifest on default branch). The
+    audit then degrades gracefully — local `harness_drift` still drives
+    severity in that case.
+
+    Resolves the "audit shows drift even though propagation PR was just
+    merged" UX gap: after the merge, remote default branch has the right
+    anchor but the user's local working copy hasn't been pulled. Without
+    this signal the audit table would keep flagging propagation work
+    that's already done.
+    """
+    if not shutil.which("gh"):
+        return None
+    # Get default branch via gh.
+    try:
+        gh = subprocess.run(
+            ["gh", "repo", "view", "--json", "defaultBranchRef",
+             "-q", ".defaultBranchRef.name"],
+            cwd=str(project), capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+        if gh.returncode != 0:
+            return None
+        default_branch = gh.stdout.strip()
+        if not default_branch:
+            return None
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+    # Fetch default branch (cheap if up to date).
+    try:
+        fetch = subprocess.run(
+            ["git", "-C", str(project), "fetch", "origin", default_branch],
+            capture_output=True, text=True, check=False, timeout=15,
+        )
+        if fetch.returncode != 0:
+            return None
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+    # Read remote manifest content.
+    try:
+        cat = subprocess.run(
+            ["git", "-C", str(project), "cat-file", "-p",
+             f"origin/{default_branch}:{HARNESS_MANIFEST}"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if cat.returncode != 0:
+            return None
+        try:
+            from ai_ops.audit.harness import HarnessManifest
+            remote_manifest = HarnessManifest.from_toml(cat.stdout)
+        except Exception:
+            return None
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+    head_sha = _ai_ops_head_sha_local(ai_ops_root)
+    if not head_sha:
+        return None
+    return remote_manifest.ai_ops_sha == head_sha
+
+
+def _ai_ops_head_sha_local(ai_ops_root: Path) -> str:
+    """Return ai-ops repo's current HEAD sha. Inline to avoid circular import."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ai_ops_root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
+
+
 def _is_ai_ops_repo(path: Path) -> bool:
     """ai-ops itself is the source-of-truth repo for the methodology, not a
     consumer that seeds `.ai-ops/harness.toml`. Detect by structural shape
@@ -432,15 +517,24 @@ def collect_signals(path: Path) -> ProjectSignals:
     # for managed projects to keep the audit fast for large ghq trees.
     if mgd == "yes":
         pending_prs = _count_pending_propagation_prs(path)
+        remote_synced = _remote_anchor_synced(path, ai_ops_root)
     else:
         pending_prs = 0
+        remote_synced = None
 
-    # Priority assignment
+    # Priority assignment.
+    # `harness_drift` reflects local working-copy state. After a propagate-*
+    # PR is merged, local can still appear drifted until the user pulls —
+    # but propagation work for that project is genuinely done. When remote
+    # is known to be in sync (`remote_anchor_synced is True`), local
+    # harness_drift alone should not escalate priority. When remote state is
+    # unknown (None), fall back to treating local drift as P1 worthy.
+    propagation_needed = harness_drift and remote_synced is not True
     if loc != "ok" or sec >= 1:
         priority = "P0"
     elif (
         (mgd == "no" and nix == "missing" and has_stack)
-        or (mgd == "yes" and harness_drift)
+        or (mgd == "yes" and propagation_needed)
         or policy_drift in ("stale", "diverged", "ahead-and-behind", "no-anchor")
         or (
             age_days is not None
@@ -477,7 +571,7 @@ def collect_signals(path: Path) -> ProjectSignals:
         sub_flow = "no-op"
     elif mgd == "yes" and (
         (nix == "missing" and has_stack)
-        or harness_drift
+        or propagation_needed
         or policy_drift in ("stale", "diverged", "ahead-and-behind", "no-anchor")
     ):
         sub_flow = "realign"
@@ -501,6 +595,7 @@ def collect_signals(path: Path) -> ProjectSignals:
         has_stack=has_stack,
         is_docs_only=docs_only,
         harness_drift=harness_drift,
+        remote_anchor_synced=remote_synced,
         policy_drift=policy_drift,
         pending_propagation_prs=pending_prs,
         priority=priority,
@@ -529,6 +624,7 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "has_stack": s.has_stack,
         "is_docs_only": s.is_docs_only,
         "harness_drift": s.harness_drift,
+        "remote_anchor_synced": s.remote_anchor_synced,
         "policy_drift": s.policy_drift,
         "pending_propagation_prs": s.pending_propagation_prs,
         "priority": s.priority,
@@ -569,6 +665,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         ("todo", 4),
         ("pdr", 3),
         ("prs", 3),
+        ("rsy", 3),
         ("pri", 3),
         ("sub-flow", 9),
     )
@@ -585,6 +682,12 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         )
         pdr = _POLICY_DRIFT_SHORT.get(s.policy_drift, s.policy_drift[:3])
         prs = "-" if s.pending_propagation_prs < 0 else str(s.pending_propagation_prs)
+        if s.remote_anchor_synced is True:
+            rsy = "yes"
+        elif s.remote_anchor_synced is False:
+            rsy = "no"
+        else:
+            rsy = "-"
         row = (
             f"{proj:<28} "
             f"{path_short:<52} "
@@ -597,6 +700,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             f"{s.todo:>4} "
             f"{pdr:<3} "
             f"{prs:>3} "
+            f"{rsy:<3} "
             f"{s.priority:<3} "
             f"{s.sub_flow:<9}"
         )

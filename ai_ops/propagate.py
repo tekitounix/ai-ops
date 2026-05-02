@@ -134,13 +134,21 @@ def list_anchor_sync_targets(
 ) -> tuple[list[AnchorSyncTarget], list[SkipReason]]:
     """Walk managed projects and return (targets, skip_reasons).
 
-    A project becomes a Target iff:
-    - `.ai-ops/harness.toml` exists AND is git-tracked
-    - `ai_ops_sha_drift` is True
-    - No `missing` / `modified` / `extra` harness files (those need a
-      separate sync plan, not anchor-only)
-    - GitHub-hosted (`gh repo view` returns metadata)
+    Remote-first logic — what matters for anchor-sync is the state of
+    `origin/<default-branch>`, not the user's local working copy:
+
+    - `.ai-ops/harness.toml` must be present on `origin/<default>`
+    - The remote manifest's `ai_ops_sha` must differ from current
+      ai-ops HEAD (otherwise the project is already synced)
+    - `gh` must be available so we can identify default branch and
+      open PRs
     - Not ai-ops itself
+
+    File content drift (local file hashes vs manifest hashes) is NOT
+    a reason to skip anchor-sync — anchor-sync only touches the
+    `ai_ops_sha` field, leaving `[harness_files]` untouched. File
+    content sync is a separate concern handled by `migrate --update-
+    harness` or a future propagate-files-sync plan.
     """
     head_sha = _ai_ops_head_sha(ai_ops_root)
     if not head_sha:
@@ -156,40 +164,6 @@ def list_anchor_sync_targets(
         if _is_ai_ops_repo(project):
             skips.append(SkipReason(project, "ai-ops itself (mgd=src)"))
             continue
-        manifest_path = project / HARNESS_MANIFEST
-        if not manifest_path.is_file():
-            skips.append(SkipReason(project, "no .ai-ops/harness.toml"))
-            continue
-        if not _harness_toml_is_tracked(project):
-            skips.append(SkipReason(
-                project,
-                ".ai-ops/harness.toml is untracked — commit it first",
-            ))
-            continue
-
-        try:
-            drift = detect_drift(project, ai_ops_root)
-        except Exception as exc:
-            skips.append(SkipReason(project, f"detect_drift failed: {exc}"))
-            continue
-
-        if drift.missing or drift.modified or drift.extra:
-            details = []
-            if drift.missing:
-                details.append(f"missing={len(drift.missing)}")
-            if drift.modified:
-                details.append(f"modified={len(drift.modified)}")
-            if drift.extra:
-                details.append(f"extra={len(drift.extra)}")
-            skips.append(SkipReason(
-                project,
-                f"file drift present ({', '.join(details)}) — needs harness-files-sync plan",
-            ))
-            continue
-
-        if not drift.ai_ops_sha_drift:
-            # Already in sync — nothing to do, not surfaced as skip.
-            continue
 
         gh_meta = _gh_repo_metadata(project)
         if gh_meta is None:
@@ -201,10 +175,8 @@ def list_anchor_sync_targets(
 
         default_branch, repo_full_name = gh_meta
 
-        # Fetch the default branch so we can verify the manifest is present
-        # there. Without this, a manifest committed only on a feature branch
-        # (never merged to default) would crash anchor_sync_one when the
-        # worktree branched from origin/<default> finds no harness.toml.
+        # Fetch the default branch so the cat-file lookups below see the
+        # latest remote state.
         fetch = subprocess.run(
             ["git", "-C", str(project), "fetch", "origin", default_branch],
             capture_output=True, text=True, check=False, timeout=15,
@@ -221,21 +193,38 @@ def list_anchor_sync_targets(
             skips.append(SkipReason(
                 project,
                 f".ai-ops/harness.toml absent on origin/{default_branch} — "
-                f"merge it to {default_branch} first",
+                f"use propagate-init or merge it to {default_branch} first",
             ))
             continue
 
+        # Read remote manifest content from origin/<default>.
         try:
-            manifest = HarnessManifest.from_toml(
-                manifest_path.read_text(encoding="utf-8")
+            cat = subprocess.run(
+                ["git", "-C", str(project), "cat-file", "-p",
+                 f"origin/{default_branch}:{HARNESS_MANIFEST}"],
+                capture_output=True, text=True, check=False, timeout=5,
             )
+            if cat.returncode != 0:
+                skips.append(SkipReason(
+                    project,
+                    f"cat-file origin/{default_branch}:{HARNESS_MANIFEST} failed",
+                ))
+                continue
+            remote_manifest = HarnessManifest.from_toml(cat.stdout)
         except Exception as exc:
-            skips.append(SkipReason(project, f"manifest parse failed: {exc}"))
+            skips.append(SkipReason(
+                project,
+                f"remote manifest parse failed: {exc}",
+            ))
+            continue
+
+        if remote_manifest.ai_ops_sha == head_sha:
+            # Already synced — nothing to do, not surfaced as skip.
             continue
 
         targets.append(AnchorSyncTarget(
             project_path=project,
-            current_sha=manifest.ai_ops_sha,
+            current_sha=remote_manifest.ai_ops_sha,
             new_sha=head_sha,
             default_branch=default_branch,
             repo_full_name=repo_full_name,
