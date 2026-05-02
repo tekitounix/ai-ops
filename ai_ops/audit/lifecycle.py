@@ -241,6 +241,16 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
                 f"{rel} Progress is complete but 'Outcomes & Retrospective' is still TBD"
             )
 
+        # An active plan whose Outcomes section is filled with substantive
+        # content (not just `TBD`) is a strong signal that work is done and
+        # the plan should be moved to docs/plans/archive/. Catching this in
+        # audit prevents the "shipped but never archived" failure mode.
+        if _outcomes_filled(text):
+            warnings.append(
+                f"{rel} Outcomes & Retrospective is filled — appears archive-ready "
+                f"(move to docs/plans/archive/YYYY-MM-DD-<slug>/)"
+            )
+
         if _plan_age(plan, root, now_utc) > timedelta(days=PLAN_STALE_DAYS):
             warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without update")
     return warnings
@@ -277,6 +287,18 @@ def _outcomes_still_tbd(text: str) -> bool:
         return False
     first_token = body.split(None, 1)[0].rstrip(".。")
     return first_token.upper() == "TBD"
+
+
+def _outcomes_filled(text: str) -> bool:
+    """True when Outcomes & Retrospective has substantive content (not TBD)."""
+    match = re.search(r"(?ms)^## Outcomes & Retrospective\s*(.*?)(?=^## |\Z)", text)
+    if not match:
+        return False
+    body = match.group(1).strip()
+    if not body:
+        return False
+    first_token = body.split(None, 1)[0].rstrip(".。")
+    return first_token.upper() != "TBD"
 
 
 def run_lifecycle_audit(root: Path) -> int:

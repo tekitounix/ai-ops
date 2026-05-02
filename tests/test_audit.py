@@ -336,8 +336,15 @@ def test_lifecycle_audit_warns_when_progress_complete_but_outcomes_tbd(
     )
 
 
-def test_lifecycle_audit_does_not_warn_when_outcomes_filled(tmp_path: Path) -> None:
-    """Healthy plan: Progress complete, Outcomes filled, Improvement Candidates present."""
+def test_lifecycle_audit_warns_when_outcomes_filled_but_still_active(
+    tmp_path: Path,
+) -> None:
+    """An active plan with substantive Outcomes content is archive-ready.
+
+    Catches the 'shipped but never archived' failure mode where work is
+    finished, Outcomes documented, but the plan still sits in the active
+    directory because the archive step was forgotten.
+    """
     from ai_ops.audit.lifecycle import _check_plan_hygiene
 
     plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
@@ -351,8 +358,27 @@ def test_lifecycle_audit_does_not_warn_when_outcomes_filled(tmp_path: Path) -> N
     )
 
     warnings = _check_plan_hygiene(tmp_path)
-    assert not any("Outcomes & Retrospective" in w for w in warnings)
-    assert not any("Improvement Candidates" in w for w in warnings)
+    assert any("appears archive-ready" in w for w in warnings)
+
+
+def test_lifecycle_audit_does_not_warn_archive_ready_when_outcomes_tbd(
+    tmp_path: Path,
+) -> None:
+    """A plan with Outcomes still 'TBD' is in progress, not archive-ready."""
+    from ai_ops.audit.lifecycle import _check_plan_hygiene
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "# Feature\n\n"
+        "## Progress\n\n- [ ] step in progress\n\n"
+        "## Outcomes & Retrospective\n\nTBD.\n\n"
+        "## Improvement Candidates\n\n### (none this pass)\n",
+        encoding="utf-8",
+    )
+
+    warnings = _check_plan_hygiene(tmp_path)
+    assert not any("archive-ready" in w for w in warnings)
 
 
 def test_plan_age_prefers_git_log_over_mtime(tmp_path: Path) -> None:
