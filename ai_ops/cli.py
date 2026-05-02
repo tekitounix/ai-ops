@@ -216,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
     )
+    propagate_anchor.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation; the workflow file invoking "
+             "this command is treated as the user's prior approval (ADR 0011)",
+    )
     propagate_anchor.set_defaults(handler=handle_propagate_anchor)
 
     propagate_init = sub.add_parser(
@@ -235,6 +240,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
     )
+    propagate_init.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation (CI use; ADR 0011)",
+    )
     propagate_init.set_defaults(handler=handle_propagate_init)
 
     propagate_files = sub.add_parser(
@@ -253,6 +262,10 @@ def build_parser() -> argparse.ArgumentParser:
     propagate_files.add_argument(
         "--dry-run", action="store_true",
         help="Show what would happen, write nothing, no network calls",
+    )
+    propagate_files.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation (CI use; ADR 0011)",
     )
     propagate_files.set_defaults(handler=handle_propagate_files)
 
@@ -416,6 +429,7 @@ def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
@@ -425,6 +439,7 @@ def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
@@ -434,6 +449,7 @@ def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
         project=args.project,
         all_projects=args.all_projects,
         dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
     )
 
 
