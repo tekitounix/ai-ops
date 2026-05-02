@@ -80,7 +80,25 @@ Plan path: `docs/plans/anchor-sync-propagation/plan.md`。採用後の archive p
 
 ## Outcomes & Retrospective
 
-TBD。完了時に shipped したもの、残ったもの、実 use での挙動を記録する。
+Shipped (commits 7268c9c / d8453fc / f8d4cb8 / ef4f505 / 71fa9b2):
+
+- `ai_ops/propagate.py` の anchor-sync 機構(worktree 隔離 + try/finally cleanup + per-project confirmation)
+- `ai-ops propagate-anchor` サブコマンド(`--all` / `--project` / `--dry-run`)
+- バグ修正 3 連発で実 use evidence を蓄積:
+  - default branch 上の manifest 確認が必要(local HEAD では不十分、d8453fc)
+  - `ai_ops_sha` だけ bump、`HarnessManifest.from_toml/to_toml` round-trip で他セクション・コメントが消える destructive bug を発見、regex-based text edit に置換(ef4f505)
+  - 改行保持 regex の greedy 問題で空行が消える bug 修正(f3c7f09 — files-sync と共通)
+  - Nix sandbox CI 互換のため `_ai_ops_head_sha` mock + `worktree_root` パラメータ追加(71fa9b2)
+
+実 use 結果:
+- audio-dsp-docs / fastener-research / fx-llm-research に 4 件の anchor-sync PR を作成、3 件は merge 済み(`f8d4cb8` で sync された状態)
+- umipal #19 は umipal の audit ジョブ(Renode hardware compliance、20+ 分)待ちで pending、ai-ops 側からは加速不可
+
+What remains:
+- ai-ops の HEAD はその後 `f3c7f09` → `71fa9b2` → `3bf812d` → `d1b9a91` → `d329e8c` と進んだので、merged 3 project は再度 anchor-sync 候補(rsy=no)。次の運用 cycle で propagate-anchor を再ラン予定。
+
+What should change in future plans:
+- 「local 状態と remote 状態の semantic 区別」は最初から設計に明示する。今回は detector が local 起点だったため merge 直後の audit 出力が user に「propagate not done」と誤認させた。`remote_anchor_synced` signal の追加(別 plan f8d4cb8)で解消したが、最初から両 view を持つべきだった。
 
 ## Improvement Candidates
 

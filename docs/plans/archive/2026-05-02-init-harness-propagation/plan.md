@@ -56,7 +56,21 @@
 
 ## Outcomes & Retrospective
 
-TBD。完了時に shipped したものと実 use 結果を記録。
+Shipped (commits 85cba98 / 7dd5591 / その後 71fa9b2 で sandbox 互換):
+
+- `ai_ops/propagate.py` の init-harness 機構: `.ai-ops/harness.toml` がローカル disk にあるが untracked なプロジェクトに対して、worktree 隔離 + manifest commit + push + PR 作成を行う
+- `ai-ops propagate-init` サブコマンド(`--all` / `--project` / `--dry-run`)
+- レビューで判明した重要な改善: 当初 `init_one` が capture した user 作業コピーの `ai_ops_sha` をそのまま記録していたため、merge 直後に古い anchor になる問題があり、`init_one` が current ai-ops HEAD に bump してから commit するよう修正(7dd5591)
+
+実 use 結果:
+- audio-dsp-docs / fastener-research / fx-llm-research の 3 プロジェクトに init PR を作成、すべて merge 済み
+- 元の 4 番目候補(mi_share)は manifest が feature branch にしか無かったため init 対象外と判定された(branch 切り替えなしで commit できないため)
+
+What remains:
+- mi_share 系の repo (mi_share, mi_share.ai-ops-setup, mi_share.repo-restructure) で `.ai-ops/harness.toml` を default branch にマージする作業は user 側に残る(merge 完了後 anchor-sync が動き始める)。
+
+What should change in future plans:
+- captured manifest と current state の境界に注意。「local の状態をそのまま PR に乗せる」と「current canonical 状態に合わせて PR を作る」は別物で、後者の方が普通は user の意図に合う(init-harness では後者が正解だった)。
 
 ## Improvement Candidates
 
