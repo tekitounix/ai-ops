@@ -234,18 +234,25 @@ def list_anchor_sync_targets(
 # ─────────────────────────────────────────────────────
 
 
-def _worktree_dir(target: AnchorSyncTarget) -> Path:
+def _default_worktree_root() -> Path:
+    """Where worktrees live by default. Tests can override via the
+    `worktree_root` parameter to anchor_sync_one / init_one so they don't
+    write under `Path.home()` (which is `/homeless-shelter` in Nix
+    sandboxes and read-only)."""
+    return Path.home() / ".cache" / "ai-ops" / "worktrees"
+
+
+def _worktree_dir(
+    target: AnchorSyncTarget, worktree_root: Path | None = None,
+) -> Path:
     """Where the isolated worktree lives during propagation.
 
-    Uses ~/.cache/ai-ops/worktrees/<repo-name>-anchor-sync-<short-sha>/
+    Defaults to `~/.cache/ai-ops/worktrees/<repo-name>-anchor-sync-<short>`
     so the user's working directory is never touched.
     """
     short = target.new_sha[:7]
-    return (
-        Path.home()
-        / ".cache" / "ai-ops" / "worktrees"
-        / f"{target.project_path.name}-anchor-sync-{short}"
-    )
+    root = worktree_root or _default_worktree_root()
+    return root / f"{target.project_path.name}-anchor-sync-{short}"
 
 
 def _branch_name(target: AnchorSyncTarget) -> str:
@@ -381,6 +388,7 @@ def anchor_sync_one(
     target: AnchorSyncTarget,
     *,
     dry_run: bool = False,
+    worktree_root: Path | None = None,
 ) -> tuple[bool, str]:
     """Execute anchor sync for a single target. Returns (success, message).
 
@@ -389,7 +397,7 @@ def anchor_sync_one(
     success and failure (try/finally guarantee).
     """
     branch = _branch_name(target)
-    worktree_path = _worktree_dir(target)
+    worktree_path = _worktree_dir(target, worktree_root)
 
     if dry_run:
         msg = (
@@ -609,12 +617,13 @@ def init_one(
     *,
     ai_ops_sha: str,
     dry_run: bool = False,
+    worktree_root: Path | None = None,
 ) -> tuple[bool, str]:
     """Add the untracked `.ai-ops/harness.toml` via worktree + PR."""
     branch = _init_branch_name(target, ai_ops_sha)
+    root = worktree_root or _default_worktree_root()
     worktree_path = (
-        Path.home() / ".cache" / "ai-ops" / "worktrees"
-        / f"{target.project_path.name}-init-harness-{ai_ops_sha[:7]}"
+        root / f"{target.project_path.name}-init-harness-{ai_ops_sha[:7]}"
     )
 
     if dry_run:

@@ -4,6 +4,14 @@ These tests focus on the target-listing logic and the worktree-cleanup
 guarantee. The actual `gh` and `git` invocations are not exercised end-to-
 end here; instead we use the existing local-git fixtures and verify the
 filtering and skip-reason behaviour.
+
+Nix sandbox compatibility: ai-ops's CI runs in a Nix sandbox where the
+repo source is copied without `.git`. `_ai_ops_head_sha` would return an
+empty string in that environment, which makes `list_anchor_sync_targets`
+short-circuit to `([], [])` and several tests look like they "found
+nothing" when really they couldn't determine the head. The autouse
+fixture below patches the ai-ops HEAD lookup with a fixed SHA so tests
+exercise the full code path regardless of the host.
 """
 from __future__ import annotations
 
@@ -13,6 +21,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+
+_FIXED_AI_OPS_HEAD_SHA = "abcdef1234567890abcdef1234567890abcdef12"
+
+
+@pytest.fixture(autouse=True)
+def _stub_ai_ops_head_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin `_ai_ops_head_sha` to a known value so tests pass in Nix
+    sandboxes (no `.git` in source tree) as well as on a developer
+    machine. Tests that need a different value can monkeypatch it again
+    inside the test body."""
+    monkeypatch.setattr(
+        "ai_ops.propagate._ai_ops_head_sha",
+        lambda _: _FIXED_AI_OPS_HEAD_SHA,
+    )
 
 
 def _git_init_committed(path: Path, name: str = "test") -> None:
@@ -216,8 +239,9 @@ def test_target_list_includes_drifted_managed_project(tmp_path: Path) -> None:
     target = targets[0]
     assert target.project_path == project
     assert target.current_sha == "0000000000000000000000000000000000000000"
-    # new_sha should be the actual ai-ops HEAD (40-char hex)
-    assert len(target.new_sha) == 40
+    # new_sha is whatever _ai_ops_head_sha returned; in tests this is the
+    # fixed sentinel from the autouse fixture.
+    assert target.new_sha == _FIXED_AI_OPS_HEAD_SHA
     assert target.default_branch == default_branch
     assert target.repo_full_name == "owner/drifted"
 
@@ -246,7 +270,7 @@ def test_anchor_sync_one_dry_run_has_no_side_effects(tmp_path: Path) -> None:
         capture_output=True, text=True, check=True,
     ).stdout
 
-    ok, msg = anchor_sync_one(target, dry_run=True)
+    ok, msg = anchor_sync_one(target, dry_run=True, worktree_root=tmp_path / "wt")
 
     assert ok is True
     assert "would create branch" in msg
@@ -642,7 +666,10 @@ def test_init_one_bumps_ai_ops_sha_to_passed_head(tmp_path: Path) -> None:
         return real_subprocess_run(args, **kwargs)
 
     with patch("subprocess.run", side_effect=mock_subprocess_run):
-        ok, msg = init_one(target, ai_ops_sha=fresh_sha, dry_run=False)
+        ok, msg = init_one(
+            target, ai_ops_sha=fresh_sha, dry_run=False,
+            worktree_root=tmp_path / "wt",
+        )
 
     assert ok, f"init_one failed: {msg}"
     assert "text" in captured_written, "manifest was not written before PR"
@@ -675,7 +702,10 @@ def test_init_one_dry_run_has_no_side_effects(tmp_path: Path) -> None:
         capture_output=True, text=True, check=True,
     ).stdout
 
-    ok, msg = init_one(target, ai_ops_sha="abcdef0123456789", dry_run=True)
+    ok, msg = init_one(
+        target, ai_ops_sha="abcdef0123456789", dry_run=True,
+        worktree_root=tmp_path / "wt",
+    )
 
     assert ok is True
     assert "would create branch" in msg

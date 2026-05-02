@@ -252,20 +252,25 @@ def test_p2_for_clean_managed_project_under_ghq(
     """A managed project (.ai-ops/harness.toml) with matching files and no
     drift → P2 / no-op.
 
-    Manifest pins to actual ai-ops HEAD so detect_drift sees no SHA drift
-    AND policy drift detector sees a valid anchor (avoiding the new
-    `no-anchor` signal which would otherwise raise priority to P1).
+    Manifest pins to a stubbed ai-ops HEAD so detect_drift sees no SHA
+    drift AND policy drift detector sees a valid anchor (avoiding the
+    `no-anchor` signal). The stub makes the test pass identically on a
+    developer machine and in Nix sandboxes (which copy source without
+    `.git` so `_ai_ops_head_sha` would otherwise return an empty string).
     """
     _stub_home(monkeypatch, tmp_path)
     p = _make_under_ghq(tmp_path, "github.com", "owner", "clean")
     _git_init(p)
     (p / "AGENTS.md").write_text("agents", encoding="utf-8")
     (p / ".ai-ops").mkdir()
-    from ai_ops.audit.harness import HarnessManifest, _ai_ops_head_sha, _sha256
-    ai_ops_root = Path(__file__).resolve().parent.parent
+    from ai_ops.audit.harness import HarnessManifest, _sha256
+    fixed_sha = "abcdef1234567890abcdef1234567890abcdef12"
+    monkeypatch.setattr(
+        "ai_ops.audit.harness._ai_ops_head_sha", lambda _: fixed_sha,
+    )
     files_hashes = {"AGENTS.md": _sha256(p / "AGENTS.md")}
     m = HarnessManifest(
-        ai_ops_sha=_ai_ops_head_sha(ai_ops_root),
+        ai_ops_sha=fixed_sha,
         harness_files=files_hashes,
         last_sync="2026-04-29T00:00:00+00:00",
     )
