@@ -305,7 +305,10 @@ def test_install_pre_push_hook_skips_when_existing(tmp_path: Path) -> None:
 
 
 def test_install_pre_push_hook_writes_executable(tmp_path: Path) -> None:
-    """yes=True で確認なしに hook を install、+x が立つ。"""
+    """yes=True で確認なしに hook を install、+x が立つ (POSIX のみ)。"""
+    import sys
+    if sys.platform == "win32":
+        pytest.skip("POSIX executable bit not applicable on Windows")
     repo = tmp_path / "r"
     (repo / ".git" / "hooks").mkdir(parents=True)
     rc = bootstrap.install_pre_push_hook(repo, dry_run=False, yes=True)
