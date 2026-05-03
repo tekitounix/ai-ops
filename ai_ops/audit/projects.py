@@ -96,6 +96,7 @@ class ProjectSignals:
     pending_propagation_prs: int  # open PRs from `ai-ops/*` branches; -1 if `gh` unavailable
     workflow_tier: str  # "A" | "B" | "C" | "D" (per ADR 0009; missing harness.toml → "D")
     tier_violations: list[str]  # human-readable violations from declared tier; empty if clean
+    recommended_tier: str | None  # P2 observational suggestion (PR γ); None if not applicable
     has_ai_ops_workflow: bool  # `.github/workflows/ai-ops.yml` exists (ADR 0011)
     has_codeowners_routing: bool  # `.github/CODEOWNERS` references `.ai-ops/` (ADR 0011)
     priority: str  # "P0" | "P1" | "P2"
@@ -471,6 +472,65 @@ def _detect_policy_drift(project_path: Path, ai_ops_root: Path) -> str:
     return "ok"
 
 
+def _recommend_tier(
+    mgd: str,
+    workflow_tier: str,
+    visibility: str | None,
+    contributors: int | None,
+    age_days: int | None,
+) -> str | None:
+    """Suggest a workflow_tier when the project might benefit from re-declaring.
+
+    Conservative ruleset (P2 observational, never priority-bumping):
+    - Only managed projects (`mgd == "yes"`) and only when `workflow_tier == "D"`
+      (default; explicit D declarations also surface a suggestion since we can't
+      tell them apart cheaply, but the suggestion costs nothing to ignore).
+    - public visibility → "C" (production / public reviews recommended)
+    - private + contributors > 1 → "B" (managed PR-based)
+    - private + age > 365d → "D" (already spike-like; no change suggested)
+    - private + solo + active → "A" (trunk-based solo)
+    Returns None when no signal is reliable.
+    """
+    if mgd != "yes":
+        return None
+    if workflow_tier != "D":
+        return None
+    if visibility == "public":
+        return "C"
+    if age_days is not None and age_days > 365:
+        return None  # already D-like; no actionable suggestion
+    if (contributors or 1) > 1:
+        return "B"
+    return "A"
+
+
+def _gh_repo_visibility_and_contributors(path: Path) -> tuple[str | None, int | None]:
+    """Return (visibility, distinct contributor count) via `gh`. None on any failure."""
+    if not shutil.which("gh"):
+        return None, None
+    try:
+        result = subprocess.run(
+            ["gh", "repo", "view",
+             "--json", "visibility,assignableUsers",
+             "-q", '{visibility: .visibility, contributors: (.assignableUsers | length)}'],
+            cwd=str(path), capture_output=True, text=True,
+            check=False, timeout=8,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None, None
+    if result.returncode != 0:
+        return None, None
+    import json as _json
+    try:
+        data = _json.loads(result.stdout)
+    except _json.JSONDecodeError:
+        return None, None
+    visibility = data.get("visibility")
+    if isinstance(visibility, str):
+        visibility = visibility.lower()
+    return visibility, data.get("contributors")
+
+
 def collect_signals(path: Path) -> ProjectSignals:
     """Read-only signal collection for one project. Never writes."""
     loc = "ok" if _under_ghq_root(path) else "DRIFT"
@@ -643,6 +703,20 @@ def collect_signals(path: Path) -> ProjectSignals:
     else:
         sub_flow = "no-op"
 
+    # Tier 推薦 (PR γ): managed プロジェクトで未宣言 (default D) なら gh から
+    # signal を取って P2 観察的に推薦。失敗時は None。
+    if mgd == "yes":
+        visibility, contributors = _gh_repo_visibility_and_contributors(path)
+    else:
+        visibility, contributors = None, None
+    recommended_tier = _recommend_tier(
+        mgd=mgd,
+        workflow_tier=workflow_tier,
+        visibility=visibility,
+        contributors=contributors,
+        age_days=age_days,
+    )
+
     return ProjectSignals(
         project=path.name,
         path=path,
@@ -663,6 +737,7 @@ def collect_signals(path: Path) -> ProjectSignals:
         pending_propagation_prs=pending_prs,
         workflow_tier=workflow_tier,
         tier_violations=tier_violations,
+        recommended_tier=recommended_tier,
         has_ai_ops_workflow=has_ai_ops_workflow,
         has_codeowners_routing=has_codeowners_routing,
         priority=priority,
@@ -696,6 +771,7 @@ def signals_to_dict(s: ProjectSignals) -> dict:
         "pending_propagation_prs": s.pending_propagation_prs,
         "workflow_tier": s.workflow_tier,
         "tier_violations": list(s.tier_violations),
+        "recommended_tier": s.recommended_tier,
         "has_ai_ops_workflow": s.has_ai_ops_workflow,
         "has_codeowners_routing": s.has_codeowners_routing,
         "priority": s.priority,

@@ -1036,3 +1036,57 @@ def test_plan_template_and_promoted_plan_share_top_level_headings() -> None:
         f"only-in-template={template_headings - promoted_headings}, "
         f"only-in-promoted={promoted_headings - template_headings}"
     )
+
+
+
+# ---------- Tier 推薦 (PR γ) ----------
+
+
+def test_recommend_tier_returns_none_for_unmanaged() -> None:
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="no", workflow_tier="D",
+        visibility="public", contributors=5, age_days=30,
+    ) is None
+
+
+def test_recommend_tier_returns_none_for_explicit_non_d() -> None:
+    """既に A/B/C 宣言された project には推薦しない。"""
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="yes", workflow_tier="A",
+        visibility="public", contributors=10, age_days=10,
+    ) is None
+
+
+def test_recommend_tier_public_managed_suggests_c() -> None:
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="yes", workflow_tier="D",
+        visibility="public", contributors=1, age_days=30,
+    ) == "C"
+
+
+def test_recommend_tier_private_solo_suggests_a() -> None:
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="yes", workflow_tier="D",
+        visibility="private", contributors=1, age_days=30,
+    ) == "A"
+
+
+def test_recommend_tier_private_multi_suggests_b() -> None:
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="yes", workflow_tier="D",
+        visibility="private", contributors=5, age_days=30,
+    ) == "B"
+
+
+def test_recommend_tier_old_age_returns_none() -> None:
+    """1 年以上触られていない project は推薦しない (D 維持)。"""
+    from ai_ops.audit.projects import _recommend_tier
+    assert _recommend_tier(
+        mgd="yes", workflow_tier="D",
+        visibility="private", contributors=2, age_days=400,
+    ) is None

@@ -279,6 +279,45 @@ def test_run_install_secrets_yes_bypasses_confirm(
     assert confirm_called == []
 
 
+def test_install_pre_push_hook_returns_2_for_non_repo(tmp_path: Path) -> None:
+    """`.git/` が無いディレクトリでは exit 2。"""
+    rc = bootstrap.install_pre_push_hook(tmp_path, dry_run=True)
+    assert rc == 2
+
+
+def test_install_pre_push_hook_dry_run_does_not_write(tmp_path: Path) -> None:
+    """dry-run では書き込みなし、戻り値 0。"""
+    repo = tmp_path / "r"
+    (repo / ".git" / "hooks").mkdir(parents=True)
+    rc = bootstrap.install_pre_push_hook(repo, dry_run=True)
+    assert rc == 0
+    assert not (repo / ".git" / "hooks" / "pre-push").exists()
+
+
+def test_install_pre_push_hook_skips_when_existing(tmp_path: Path) -> None:
+    """既存 hook があれば上書きせず警告 + 戻り値 1。"""
+    repo = tmp_path / "r"
+    (repo / ".git" / "hooks").mkdir(parents=True)
+    (repo / ".git" / "hooks" / "pre-push").write_text("# user hook\n", encoding="utf-8")
+    rc = bootstrap.install_pre_push_hook(repo, dry_run=False, yes=True)
+    assert rc == 1
+    assert (repo / ".git" / "hooks" / "pre-push").read_text(encoding="utf-8") == "# user hook\n"
+
+
+def test_install_pre_push_hook_writes_executable(tmp_path: Path) -> None:
+    """yes=True で確認なしに hook を install、+x が立つ。"""
+    repo = tmp_path / "r"
+    (repo / ".git" / "hooks").mkdir(parents=True)
+    rc = bootstrap.install_pre_push_hook(repo, dry_run=False, yes=True)
+    assert rc == 0
+    hook = repo / ".git" / "hooks" / "pre-push"
+    assert hook.is_file()
+    mode = hook.stat().st_mode
+    assert mode & 0o100, "hook is not executable"
+    # 内容が template から copy されている (規約検査の一節を含む)
+    assert "branch" in hook.read_text(encoding="utf-8")
+
+
 def test_install_secrets_records_failure_when_bw_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

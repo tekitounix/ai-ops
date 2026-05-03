@@ -35,6 +35,7 @@ REQUIRED_FILES = (
     "templates/artifacts/update-flake-lock.yml",
     "templates/artifacts/.github/workflows/ai-ops.yml",
     "templates/artifacts/CODEOWNERS.template",
+    "templates/artifacts/pre-push",
     "templates/artifacts/rulesets/tier-a.json",
     "templates/artifacts/rulesets/tier-b.json",
     "templates/artifacts/rulesets/tier-c.json",
@@ -502,6 +503,7 @@ def run_lifecycle_audit(root: Path) -> int:
         root / "templates" / "artifacts" / "rulesets" / "tier-a.json",
         root / "templates" / "artifacts" / "rulesets" / "tier-b.json",
         root / "templates" / "artifacts" / "rulesets" / "tier-c.json",
+        root / "templates" / "artifacts" / "pre-push",
     }
     template_root = root / "templates"
     if template_root.exists():
