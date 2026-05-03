@@ -21,6 +21,7 @@ REQUIRED_FILES = (
     "docs/self-operation.md",
     "docs/decisions/0007-python-canonical-cli.md",
     "docs/decisions/0008-plan-persistence.md",
+    "docs/decisions/0012-pr-ai-review.md",
     "templates/project-brief.md",
     "templates/migration-brief.md",
     "templates/agent-handoff.md",
@@ -40,6 +41,7 @@ REQUIRED_FILES = (
     ".github/workflows/ecosystem-watch.yml",
     ".github/workflows/propagate-cron.yml",
     ".github/workflows/managed-project-check.yml",
+    ".github/workflows/managed-project-review.yml",
     "pyproject.toml",
     "setup.py",
     ".github/workflows/ci.yml",
@@ -51,6 +53,7 @@ REQUIRED_FILES = (
     "ai_ops/bootstrap.py",
     "ai_ops/propagate.py",
     "ai_ops/report.py",
+    "ai_ops/review.py",
     "ai_ops/setup.py",
     "ai_ops/worktree.py",
 )
@@ -77,6 +80,7 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("setup-ci-workflow", "--help"),
     ("setup-codeowners", "--help"),
     ("setup-ruleset", "--help"),
+    ("review-pr", "--help"),
 )
 
 PLAN_STALE_DAYS = 30
