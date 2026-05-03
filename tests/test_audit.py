@@ -187,6 +187,8 @@ def test_lifecycle_audit_recognizes_renovate_artifact(tmp_path: Path) -> None:
     assert "docs/projects-audit.md" in REQUIRED_FILES
     assert "docs/project-relocation.md" in REQUIRED_FILES
     assert "docs/realignment.md" in REQUIRED_FILES
+    # PR θ: backlog.md required (deferred candidate 集約場所)
+    assert "docs/plans/backlog.md" in REQUIRED_FILES
 
 
 def test_align_prompt_chain_reaches_relocation_playbook() -> None:

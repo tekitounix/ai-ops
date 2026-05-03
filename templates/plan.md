@@ -45,8 +45,8 @@ Capture each non-obvious learning that could improve future operation. Triage be
 
 Enum reference:
 
-- `Recommended adoption target` — `current-plan` (in-plan fix), `durable-doc` (`docs/`), `adr` (`docs/decisions/`), `template` (`templates/`), `audit`/`harness`/`test` (matching module), `deferred` (not this pass), `rejected` (will not adopt).
-- `Disposition` — `open` (undecided), `adopted` (record adoption commit / PR in `Verification`), `deferred` (reason required), `rejected` (reason required), `superseded` (reference to replacement plan / candidate required).
+- `Recommended adoption target` — `current-plan` (in-plan fix), `durable-doc` (`docs/`), `adr` (`docs/decisions/`), `template` (`templates/`), `audit`/`harness`/`test` (matching module), `deferred` (not this pass — **transcribe to `docs/plans/backlog.md` before archiving**, ADR 0008 amendment PR θ), `rejected` (will not adopt).
+- `Disposition` — `open` (undecided), `adopted` (record adoption commit / PR in `Verification`), `deferred` (reason required + entry in `docs/plans/backlog.md`), `rejected` (reason required), `superseded` (reference to replacement plan / candidate required).
 
 ## Context and Orientation
 
