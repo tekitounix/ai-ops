@@ -229,6 +229,56 @@ def test_install_secrets_proceeds_after_confirmation(
     assert {call[1] for call in secret_calls} == {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
 
 
+def test_gh_secret_set_uses_stdin_not_body_arg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0004: secret 値は CLI 引数 (--body) ではなく stdin (--body-file -) で渡す。"""
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured["args"] = args[0] if args else kwargs.get("args")
+        captured["input"] = kwargs.get("input")
+
+        class R:
+            returncode = 0
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+    ok = bootstrap._gh_secret_set("o/r", "MY_KEY", "secret-value", dry_run=False)
+    assert ok is True
+    # 引数列に値が含まれてはならない
+    assert "secret-value" not in " ".join(captured["args"])
+    # --body-file - + stdin で渡される
+    assert "--body-file" in captured["args"]
+    assert "-" in captured["args"]
+    assert captured["input"] == "secret-value"
+
+
+def test_run_install_secrets_yes_bypasses_confirm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`run_install_secrets(yes=True)` で `_confirm` が呼ばれないこと。"""
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: True)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    monkeypatch.setenv("BW_SESSION", "session-token")
+    monkeypatch.setattr(bootstrap, "_bw_get_field", lambda item, field: "fake-key")
+    confirm_called: list = []
+    monkeypatch.setattr(
+        bootstrap, "_confirm",
+        lambda *a, **kw: confirm_called.append(1) or True,
+    )
+    monkeypatch.setattr(bootstrap, "_gh_secret_set", lambda *a, **kw: True)
+
+    rc = bootstrap.run_install_secrets(
+        repo="o/r", anthropic_item="A", openai_item=None,
+        dry_run=True, yes=True,
+    )
+    assert rc == 0
+    assert confirm_called == []
+
+
 def test_install_secrets_records_failure_when_bw_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -49,6 +49,7 @@ One proposal requires one confirmation. Batch approval, meaning several distinct
 ## Safety
 
 - Never commit `.env`, `*.key`, `*.pem`, credentials, customer data, or production secrets.
+- Secret-handling: follow ADR 0004 absolutely-do-not-do list (no `--body <value>` CLI args, no secret values in print/log/chat, no Confirm bypass). `audit security` enforces these mechanically.
 - Never push public visibility without explicit in-session confirmation.
 - Never skip git hooks with `--no-verify` unless explicitly requested.
 - Do not modify user environment files such as `~/.zshrc`, `~/.bashrc`, `~/.gitconfig`, `~/.config/*`, or OS scheduler files.

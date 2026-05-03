@@ -178,6 +178,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install tools at or below this tier (default 1 = required only)",
     )
     bootstrap.add_argument("--dry-run", action="store_true")
+    bootstrap.add_argument(
+        "--yes", "-y", dest="yes", action="store_true",
+        help="Skip confirmation prompts (declares prior approval; ADR 0004)",
+    )
     # PR α: Bitwarden 経由の secrets 登録 (ai-ops review-pr 等で使う API key)
     bootstrap.add_argument(
         "--with-secrets", dest="with_secrets", action="store_true",
@@ -352,6 +356,12 @@ def build_parser() -> argparse.ArgumentParser:
     wt_c.add_argument(
         "--auto", action="store_true",
         help="Skip per-worktree confirmation; remove all eligible worktrees",
+    )
+    wt_c.add_argument(
+        "--auto-archive", dest="auto_archive", action="store_true",
+        help="For Tier A / unmanaged repos, auto-archive plans of merged PRs "
+             "before cleanup (git mv + commit + push). Tier B/C is skipped "
+             "with a warning to use a PR instead (ADR 0010 §Lifecycle 4)",
     )
     wt_c.add_argument("--dry-run", action="store_true")
     wt_c.set_defaults(handler=handle_worktree_cleanup)
@@ -624,7 +634,7 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
-    rc = run_install(tier_max=args.tier, dry_run=args.dry_run)
+    rc = run_install(tier_max=args.tier, dry_run=args.dry_run, yes=args.yes)
     if not args.with_secrets:
         return rc
     if not args.repo:
@@ -636,6 +646,7 @@ def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
         openai_item=args.bw_openai_item,
         bw_field=args.bw_field,
         dry_run=args.dry_run,
+        yes=args.yes,
     )
     # tool install と secrets 登録の両方を成功扱いにする
     return rc or secrets_rc
@@ -731,6 +742,7 @@ def handle_worktree_cleanup(args: argparse.Namespace, root: Path) -> int:
     return run_worktree_cleanup(
         auto=args.auto,
         dry_run=args.dry_run,
+        auto_archive=getattr(args, "auto_archive", False),
         cwd=root,
     )
 
