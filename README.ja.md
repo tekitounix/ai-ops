@@ -31,7 +31,7 @@ github.com/tekitounix/ai-ops に従って、自分のプロジェクト群を監
 
 ## ai-ops の運用ってどうやるの
 
-運用全体のガイド — ライフサイクルの phase、sub-flow の選び方、workflow tier、worktree ベースの並行作業、GitHub-native の運用基盤、plan 駆動の execution、改善学習の取り込みループ、用途別 CLI リファレンス — はすべて **[`docs/operation.md`](docs/operation.md)** にまとめてある(英語)。 まずこの 1 ドキュメントを読めば全体構造が分かる。 そこから `docs/` 配下の各 deep-dive と `docs/decisions/` の設計判断 (ADR) に link されている。
+運用全体のガイド — ライフサイクルの phase、sub-flow の選び方、**5 つの戦略 (Git / ghq / GitHub / Nix / plan) と自動 / 手動の責任分界表**、workflow tier、worktree ベースの並行作業、GitHub-native の運用基盤、plan 駆動の execution、改善学習の取り込みループ、用途別 CLI リファレンス — はすべて **[`docs/operation.md`](docs/operation.md)** にまとめてある。 まずこの 1 ドキュメントを読めば全体構造が分かる。 そこから `docs/` 配下の各 deep-dive と `docs/decisions/` の設計判断 (ADR) に link されている。
 
 一言で言うと: AI agent が context を読み、 Brief を書き、 user が確認し、 通常の git / gh ツールで実行する。 そこに tier 別ポリシー、 sibling git worktree、 GitHub Issues + scheduled Actions による drift 通知 + 反映 PR が組み合わさる仕組み。
 

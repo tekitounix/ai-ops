@@ -288,9 +288,10 @@ def test_lifecycle_audit_warns_on_plan_hygiene(tmp_path: Path) -> None:
     old = now - timedelta(days=31)
     os.utime(plan, (old.timestamp(), old.timestamp()))
 
-    warnings = _check_plan_hygiene(tmp_path, now=now)
+    warnings, failures = _check_plan_hygiene(tmp_path, now=now)
     assert any("missing Progress checkbox" in warning for warning in warnings)
     assert any("active for >30 days" in warning for warning in warnings)
+    assert failures == []
 
 
 def test_lifecycle_audit_warns_when_improvement_candidates_section_missing(
@@ -308,16 +309,22 @@ def test_lifecycle_audit_warns_when_improvement_candidates_section_missing(
         encoding="utf-8",
     )
 
-    warnings = _check_plan_hygiene(tmp_path)
+    warnings, failures = _check_plan_hygiene(tmp_path)
     assert any(
         "missing '## Improvement Candidates' section" in w for w in warnings
     )
+    assert failures == []
 
 
-def test_lifecycle_audit_warns_when_progress_complete_but_outcomes_tbd(
+def test_lifecycle_audit_fails_when_progress_complete_but_outcomes_tbd(
     tmp_path: Path,
 ) -> None:
-    """Progress 全 [x] かつ Outcomes が TBD のままは archive 寸前の取りこぼし signal."""
+    """Progress 全 [x] かつ Outcomes が TBD のままは PR 前の plan 未完成 = FAIL.
+
+    ADR 0010 §Lifecycle 4 の「PR 前に plan の Outcomes を更新する」規約を
+    audit で機械的に強制する。WARN ではなく FAIL なので `ai-ops check` の
+    exit code に乗り、CI で merge を止められる。
+    """
     from ai_ops.audit.lifecycle import _check_plan_hygiene
 
     plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
@@ -330,10 +337,34 @@ def test_lifecycle_audit_warns_when_progress_complete_but_outcomes_tbd(
         encoding="utf-8",
     )
 
-    warnings = _check_plan_hygiene(tmp_path)
+    warnings, failures = _check_plan_hygiene(tmp_path)
     assert any(
-        "Outcomes & Retrospective' is still TBD" in w for w in warnings
+        "Outcomes & Retrospective' is still TBD" in f for f in failures
     )
+    # 同 plan が他の WARN 条件を満たしてはならない (Improvement Candidates あり、
+    # Progress checkbox あり、Outcomes は filled ではない)
+    assert warnings == []
+
+
+def test_lifecycle_audit_run_returns_nonzero_when_plan_outcomes_tbd(
+    tmp_path: Path,
+) -> None:
+    """Outcomes TBD で `run_lifecycle_audit` が exit 1 を返す回帰テスト."""
+    from ai_ops.audit.lifecycle import run_lifecycle_audit
+
+    plan = tmp_path / "docs" / "plans" / "feature" / "plan.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(
+        "# Feature\n\n"
+        "## Progress\n\n- [x] step\n\n"
+        "## Outcomes & Retrospective\n\nTBD.\n\n"
+        "## Improvement Candidates\n\n### (none this pass)\n",
+        encoding="utf-8",
+    )
+    # 必須ファイルは存在しないので他の FAIL も出るが、本テストの主旨は
+    # 「Outcomes TBD だけでも exit 1 になる」を証明することなので、exit code が
+    # 1 であれば十分。
+    assert run_lifecycle_audit(tmp_path) == 1
 
 
 def test_lifecycle_audit_warns_when_outcomes_filled_but_still_active(
@@ -357,8 +388,9 @@ def test_lifecycle_audit_warns_when_outcomes_filled_but_still_active(
         encoding="utf-8",
     )
 
-    warnings = _check_plan_hygiene(tmp_path)
+    warnings, failures = _check_plan_hygiene(tmp_path)
     assert any("appears archive-ready" in w for w in warnings)
+    assert failures == []
 
 
 def test_lifecycle_audit_does_not_warn_archive_ready_when_outcomes_tbd(
@@ -377,8 +409,10 @@ def test_lifecycle_audit_does_not_warn_archive_ready_when_outcomes_tbd(
         encoding="utf-8",
     )
 
-    warnings = _check_plan_hygiene(tmp_path)
+    warnings, failures = _check_plan_hygiene(tmp_path)
     assert not any("archive-ready" in w for w in warnings)
+    # Outcomes TBD でも Progress 未完なら failures に入らない
+    assert failures == []
 
 
 def test_outcomes_tbd_recognises_japanese_period(tmp_path: Path) -> None:

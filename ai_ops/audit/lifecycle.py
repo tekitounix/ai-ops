@@ -229,13 +229,26 @@ def _plan_age(plan: Path, root: Path, now: datetime) -> timedelta:
     return now - mtime
 
 
-def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
-    """Return non-fatal warnings for active execution plans."""
+def _check_plan_hygiene(
+    root: Path, now: datetime | None = None
+) -> tuple[list[str], list[str]]:
+    """Return ``(warnings, failures)`` for active execution plans.
+
+    Failures are conditions that must block release / merge:
+    - **Progress 完了 AND Outcomes & Retrospective が TBD**: 作業が終わったと
+      自己申告しているのに振り返りが未記入。PR を出す前に plan を完成させる
+      契約 (ADR 0008 / ADR 0010 §Lifecycle 4) を audit で機械的に強制する。
+
+    Warnings are non-blocking signals: missing Progress checkbox, missing
+    Improvement Candidates section, archive-ready (Outcomes filled but not
+    yet moved to archive/), age over PLAN_STALE_DAYS without update.
+    """
     plan_root = root / "docs" / "plans"
     if not plan_root.is_dir():
-        return []
+        return [], []
 
     warnings: list[str] = []
+    failures: list[str] = []
     now_utc = now or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
         now_utc = now_utc.replace(tzinfo=timezone.utc)
@@ -268,8 +281,9 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
             warnings.append(f"{rel} missing '## Improvement Candidates' section")
 
         if _progress_complete(text) and _outcomes_still_tbd(text):
-            warnings.append(
-                f"{rel} Progress is complete but 'Outcomes & Retrospective' is still TBD"
+            failures.append(
+                f"{rel} Progress is complete but 'Outcomes & Retrospective' is still TBD "
+                f"(complete it before PR / merge — ADR 0010 §Lifecycle 4)"
             )
 
         # An active plan whose Outcomes section is filled with substantive
@@ -284,7 +298,7 @@ def _check_plan_hygiene(root: Path, now: datetime | None = None) -> list[str]:
 
         if _plan_age(plan, root, now_utc) > timedelta(days=PLAN_STALE_DAYS):
             warnings.append(f"{rel} active for >{PLAN_STALE_DAYS} days without update")
-    return warnings
+    return warnings, failures
 
 
 def _has_progress_checkbox(text: str) -> bool:
@@ -498,13 +512,18 @@ def run_lifecycle_audit(root: Path) -> int:
         passed += 1
 
     # Phase 9: active execution plans are allowed, but stale or malformed plans
-    # should be visible without deleting useful archeology.
-    plan_warnings = _check_plan_hygiene(root)
+    # should be visible without deleting useful archeology. Outcomes-still-TBD
+    # at completion blocks merge (ADR 0010 §Lifecycle 4 enforcement).
+    plan_warnings, plan_failures = _check_plan_hygiene(root)
+    if plan_failures:
+        for msg in plan_failures:
+            print(f"  FAIL: plan hygiene — {msg}")
+            fail += 1
     if plan_warnings:
         for msg in plan_warnings:
             print(f"  WARN: plan hygiene — {msg}")
             warn += 1
-    else:
+    if not plan_warnings and not plan_failures:
         print("  OK: active execution plans are absent or healthy")
         passed += 1
 
