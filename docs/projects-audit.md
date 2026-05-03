@@ -1,5 +1,7 @@
 # Projects Audit (every ghq-tracked project)
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on the multi-project audit playbook.
+>
 > Scope: enumerate every ghq-tracked project, surface drift signals per project, prioritize by reversibility / urgency, and route each high-priority finding into the appropriate single-project sub-flow (migrate / realign / relocate). Read-only Discovery → priority-sorted Brief → per-project Execute on confirmation.
 
 ## When to use

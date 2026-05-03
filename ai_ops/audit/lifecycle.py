@@ -12,6 +12,7 @@ from pathlib import Path
 REQUIRED_FILES = (
     "README.md",
     "AGENTS.md",
+    "docs/operation.md",
     "docs/ai-first-lifecycle.md",
     "docs/project-addition-and-migration.md",
     "docs/project-relocation.md",

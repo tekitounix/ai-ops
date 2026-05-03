@@ -1,5 +1,7 @@
 # AI ファースト・プロジェクトライフサイクル
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on the canonical lifecycle (Intake → Adopt) for new project creation and existing project migration.
+
 この文書は、ai-ops における新規プロジェクト作成と既存プロジェクト移行の canonical workflow である。目的は、AI に機械的 scaffold を実行させることではない。AI が project-specific な理想状態を考え、使用者が確認し、その後 AI agent が通常の開発ツールで実行する。
 
 ## 全体フロー

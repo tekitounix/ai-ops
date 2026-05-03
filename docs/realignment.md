@@ -1,5 +1,7 @@
 # Realignment
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on the realign sub-flow for projects that have drifted from ai-ops's ideal state.
+
 運用しているプロジェクトが理想からずれて、開発が進めにくくなった時に、ai-ops のモデルを参照して矯正・改善するための agent 向け手順書である。新規プロジェクト作成や初回移行は対象外で、それぞれ [docs/ai-first-lifecycle.md](ai-first-lifecycle.md) と [docs/project-addition-and-migration.md](project-addition-and-migration.md) を使う。
 
 ## When to Use
