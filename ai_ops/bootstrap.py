@@ -511,3 +511,130 @@ def run_update(
         return 1
     print("\nAll requested tools updated.")
     return 0
+
+
+# ---------- secrets (Bitwarden + gh secret set) ----------
+#
+# `ai-ops bootstrap --with-secrets` の実装。Bitwarden CLI で session を確認し、
+# 指定 item から API key を取り出して `gh secret set` で repo secrets に登録する。
+# Operation Model に従い、各 secret 設定の前に user 確認を取る。
+
+
+def _bw_available() -> bool:
+    return shutil.which("bw") is not None
+
+
+def _gh_available() -> bool:
+    return shutil.which("gh") is not None
+
+
+def _bw_get_field(item_name: str, field: str = "api_key") -> str | None:
+    """`bw get item <name>` から指定 field の値を取り出す。"""
+    if not _bw_available():
+        return None
+    if "BW_SESSION" not in {k for k in __import__("os").environ.keys()}:
+        return None
+    result = subprocess.run(
+        ["bw", "get", "item", item_name],
+        capture_output=True, text=True, check=False, timeout=15,
+    )
+    if result.returncode != 0:
+        return None
+    import json as _json
+    try:
+        item = _json.loads(result.stdout)
+    except _json.JSONDecodeError:
+        return None
+    # 1. fields[].name == field, .value で取れる場合 (custom field)
+    for f in item.get("fields", []) or []:
+        if f.get("name") == field:
+            return f.get("value")
+    # 2. login.password (default api key 保管場所)
+    login = item.get("login") or {}
+    if field in ("api_key", "password") and login.get("password"):
+        return login["password"]
+    # 3. notes (last resort)
+    if field == "notes" and item.get("notes"):
+        return item["notes"]
+    return None
+
+
+def _gh_secret_set(repo: str, key: str, value: str, dry_run: bool) -> bool:
+    if dry_run:
+        print(f"  [dry-run] would set secret {key} on {repo}")
+        return True
+    result = subprocess.run(
+        ["gh", "secret", "set", key, "--body", value, "--repo", repo],
+        capture_output=True, text=True, check=False, timeout=20,
+    )
+    if result.returncode != 0:
+        print(f"  FAIL: gh secret set {key}: {result.stderr.strip()}", file=sys.stderr)
+        return False
+    return True
+
+
+def run_install_secrets(
+    *,
+    repo: str,
+    anthropic_item: str | None = None,
+    openai_item: str | None = None,
+    bw_field: str = "api_key",
+    dry_run: bool = False,
+) -> int:
+    """Bitwarden 経由で取得した API key を `gh secret set` で repo に登録する。
+
+    使用者は事前に `bw unlock --raw` で `BW_SESSION` を発行しておく。
+    """
+    if not _bw_available():
+        print(
+            "Error: `bw` (Bitwarden CLI) not found. Install it first "
+            "(e.g. `brew install bitwarden-cli` or `npm i -g @bitwarden/cli`).",
+            file=sys.stderr,
+        )
+        return 2
+    if not _gh_available():
+        print("Error: `gh` (GitHub CLI) not found.", file=sys.stderr)
+        return 2
+    import os as _os
+    if "BW_SESSION" not in _os.environ:
+        print(
+            "Error: BW_SESSION not set. Run `export BW_SESSION=$(bw unlock --raw)` "
+            "and retry.",
+            file=sys.stderr,
+        )
+        return 2
+
+    targets: list[tuple[str, str]] = []  # (env_key, bw_item)
+    if anthropic_item:
+        targets.append(("ANTHROPIC_API_KEY", anthropic_item))
+    if openai_item:
+        targets.append(("OPENAI_API_KEY", openai_item))
+    if not targets:
+        print(
+            "Error: pass at least one of --bw-anthropic-item / --bw-openai-item.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"==> Will register {len(targets)} secret(s) on {repo}:")
+    for key, item in targets:
+        print(f"  - {key} (from Bitwarden item: {item})")
+    if not _confirm("\nProceed?", dry_run=dry_run):
+        print("Skipped.")
+        return 0
+
+    failed = 0
+    for key, item in targets:
+        value = _bw_get_field(item, bw_field)
+        if value is None:
+            print(
+                f"  FAIL: could not read Bitwarden item '{item}' field '{bw_field}'",
+                file=sys.stderr,
+            )
+            failed += 1
+            continue
+        if _gh_secret_set(repo, key, value, dry_run):
+            print(f"  OK: set {key} on {repo}")
+        else:
+            failed += 1
+    return 1 if failed else 0

@@ -34,6 +34,39 @@ from typing import Literal
 STATUS_CONTEXT = "ai-ops AI Review"
 DEFAULT_TIMEOUT = 60
 
+# LLM 価格表 (USD per million tokens、2026-05 時点)。
+# 新モデル追加時はここに追記。未知モデルは cost 表示 skip。
+PRICING_USD_PER_MTOK: dict[str, dict[str, float]] = {
+    # Anthropic
+    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
+    "claude-opus-4-7": {"input": 15.0, "output": 75.0},
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+    # OpenAI
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4o": {"input": 2.50, "output": 10.0},
+}
+
+
+def _estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """model と token 数から USD コストを推定。未知 model は None。"""
+    rates = PRICING_USD_PER_MTOK.get(model)
+    if rates is None:
+        return None
+    return (input_tokens * rates["input"] + output_tokens * rates["output"]) / 1_000_000
+
+
+def _format_cost_footer(
+    model: str, input_tokens: int, output_tokens: int
+) -> str:
+    """PR Comment 末尾と stdout に出すコスト情報行。"""
+    cost = _estimate_cost_usd(model, input_tokens, output_tokens)
+    cost_str = f"${cost:.4f}" if cost is not None else "n/a (unknown model)"
+    return (
+        f"---\nai-ops AI Review · model={model} "
+        f"· input={input_tokens:,} tok · output={output_tokens:,} tok "
+        f"· estimated_cost={cost_str}"
+    )
+
 
 # ---------- 外部呼び出しのためのプリミティブ (テストは monkeypatch で差し替え) ----------
 
@@ -238,7 +271,10 @@ PR violates a clear contract clause; cite the clause in `body`.
 """
 
 
-def _call_anthropic(model: str, system: str, user: str, api_key: str) -> str | None:
+def _call_anthropic(
+    model: str, system: str, user: str, api_key: str
+) -> tuple[str | None, int, int]:
+    """Anthropic API を呼び、(text, input_tokens, output_tokens) を返す。"""
     import urllib.request
     payload = {
         "model": model,
@@ -260,15 +296,20 @@ def _call_anthropic(model: str, system: str, user: str, api_key: str) -> str | N
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         print(f"anthropic call failed: {exc}", file=sys.stderr)
-        return None
-    blocks = data.get("content") or []
-    for block in blocks:
+        return None, 0, 0
+    text: str | None = None
+    for block in data.get("content") or []:
         if block.get("type") == "text":
-            return block.get("text")
-    return None
+            text = block.get("text")
+            break
+    usage = data.get("usage") or {}
+    return text, int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0))
 
 
-def _call_openai(model: str, system: str, user: str, api_key: str) -> str | None:
+def _call_openai(
+    model: str, system: str, user: str, api_key: str
+) -> tuple[str | None, int, int]:
+    """OpenAI API を呼び、(text, input_tokens, output_tokens) を返す。"""
     import urllib.request
     payload = {
         "model": model,
@@ -291,11 +332,17 @@ def _call_openai(model: str, system: str, user: str, api_key: str) -> str | None
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         print(f"openai call failed: {exc}", file=sys.stderr)
-        return None
+        return None, 0, 0
     choices = data.get("choices") or []
-    if not choices:
-        return None
-    return (choices[0].get("message") or {}).get("content")
+    text: str | None = None
+    if choices:
+        text = (choices[0].get("message") or {}).get("content")
+    usage = data.get("usage") or {}
+    return (
+        text,
+        int(usage.get("prompt_tokens", 0)),
+        int(usage.get("completion_tokens", 0)),
+    )
 
 
 def _format_user_prompt(ctx: PRContext) -> str:
@@ -356,19 +403,16 @@ def review_with_llm(
         )
     user_prompt = _format_user_prompt(ctx)
     raw: str | None
+    input_tokens = output_tokens = 0
     if chosen == "anthropic":
-        raw = _call_anthropic(
-            os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-            REVIEW_SYSTEM_PROMPT,
-            user_prompt,
-            anthropic_key or "",
+        model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        raw, input_tokens, output_tokens = _call_anthropic(
+            model, REVIEW_SYSTEM_PROMPT, user_prompt, anthropic_key or "",
         )
     else:
-        raw = _call_openai(
-            os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            REVIEW_SYSTEM_PROMPT,
-            user_prompt,
-            openai_key or "",
+        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        raw, input_tokens, output_tokens = _call_openai(
+            model, REVIEW_SYSTEM_PROMPT, user_prompt, openai_key or "",
         )
     if not raw:
         return ReviewResult(
@@ -376,7 +420,14 @@ def review_with_llm(
             summary="ai-ops review skipped (LLM call failed)",
             body="LLM call returned no content. See workflow logs for details.",
         )
-    return _parse_llm_response(raw)
+    result = _parse_llm_response(raw)
+    # Comment 末尾に cost footer を貼る (使用量 + 推定 USD)
+    footer = _format_cost_footer(model, input_tokens, output_tokens)
+    return ReviewResult(
+        state=result.state,
+        summary=result.summary,
+        body=f"{result.body}\n\n{footer}",
+    )
 
 
 def _parse_llm_response(raw: str) -> ReviewResult:
