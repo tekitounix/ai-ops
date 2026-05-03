@@ -1,5 +1,7 @@
 # ai-ops Self-Operation
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on ai-ops's own dogfood loop (self-management as a managed project).
+
 この文書は、ai-ops 自身を ai-ops の管理対象として運用し続けるための最小ループである。永続ルールは `AGENTS.md`、長期判断は `docs/decisions/`、実行中の非自明な作業は `docs/plans/<slug>/plan.md` に置く。
 
 ## Operating Loop

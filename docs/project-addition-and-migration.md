@@ -1,5 +1,7 @@
 # プロジェクト追加・移行 — 判断基準
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on judgment criteria for choosing between `new` and `migrate` sub-flows.
+
 詳細な workflow と CLI 例は `docs/ai-first-lifecycle.md` を参照する。ここでは判断軸だけを補足する。
 
 ## 共通原則

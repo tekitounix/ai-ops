@@ -1,5 +1,7 @@
 # Project Physical Relocation
 
+> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on the relocate sub-flow (special: physical path migration with session-history preservation).
+>
 > Scope: move an existing project from outside `~/ghq/` (e.g. `~/work/<repo>`, `~/Documents/<repo>`) into `~/ghq/<host>/<owner>/<repo>/` while keeping AI session history, IDE workspace state, and build environment functional. **Full migration**: every reference to the old path is severed (no back-symlink, no baked-in cwd in chat history, no orphaned IDE storage).
 >
 > Status: end-to-end recovery validated against a 3-way split (`HASH_OLD` symlink fragment + `HASH_NEW_V1` dot-preserving sanitize + `HASH_NEW_V2` dot-replacing sanitize) — Claude session merge, VS Code chat-state rsync, and Phase 4 grep-zero criteria all passed. The orchestrated in-session path (`AI_OPS_MIGRATION_IN_PROGRESS=1`) remains exercised only in dry-run; record real-world signal here when it occurs.

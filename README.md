@@ -29,6 +29,12 @@ Per github.com/tekitounix/ai-ops, audit my projects.
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to print the prompt without invoking another agent.
 
+## How does ai-ops work?
+
+The full operation guide — lifecycle phases, sub-flow selection, workflow tiers, worktree-based parallel work, GitHub-native ecosystem, plan-driven execution, improvement capture loop, and intent-grouped CLI reference — lives at **[`docs/operation.md`](docs/operation.md)**. Read that one document to understand how the system fits together; it links to deep-dives in `docs/` and to the architectural decisions in `docs/decisions/`.
+
+In one sentence: AI agents read context, draft a Brief, you confirm, and they execute via normal git/gh tooling — with tier-aware policies, sibling git worktrees, and GitHub Issues + scheduled Actions carrying drift signals and propagation PRs to your existing notification channels.
+
 ## Install
 
 ```sh
