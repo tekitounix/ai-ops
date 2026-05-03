@@ -22,6 +22,7 @@ REQUIRED_FILES = (
     "docs/decisions/0007-python-canonical-cli.md",
     "docs/decisions/0008-plan-persistence.md",
     "docs/decisions/0012-pr-ai-review.md",
+    "docs/plans/backlog.md",
     "templates/project-brief.md",
     "templates/migration-brief.md",
     "templates/agent-handoff.md",

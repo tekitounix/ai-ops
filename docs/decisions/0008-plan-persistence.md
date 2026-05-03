@@ -91,3 +91,48 @@ nix build --no-link ".#checks.$(nix eval --impure --raw --expr builtins.currentS
 - ADR 0006: AI-first project lifecycle
 - ADR 0007: Python canonical CLI
 - `templates/plan.md`
+
+## Amendment 2026-05-03 (PR θ): Backlog の導入
+
+### Context
+
+各 plan の `Improvement Candidates` で `deferred` 判定された候補は、plan が archive されると忘れ去られる構造だった。「次の PR で対応」とだけ書かれた残課題が active plan を膨張させ、順序最適化 (今やめて後でやる) の退避場所も無かった。
+
+### Decision
+
+`docs/plans/backlog.md` を 1 ファイル新設し、deferred / Cancelled 候補の集約場所とする。
+
+### 構造
+
+- **High** — 近 1-2 PR で着手したい
+- **Medium** — 落ち着いたら
+- **Low** — 見直し材料、参考
+- **Cancelled / Deferred** — 履歴 (理由付きで strikethrough、再評価で active に戻す場合は新 entry として High/Medium に追加)
+
+### 遷移
+
+```text
+[active plan の Improvement Candidates]
+       │ deferred 判定
+       ▼
+[backlog.md High/Medium/Low]
+       │ 新 plan 起草で pick
+       ▼
+[active plan の Plan of Work]
+       │ 完了
+       ▼
+[archive]
+```
+
+### 運用ルール
+
+1. **Backlog → active plan**: 新 plan 起草時、backlog から 1-3 candidate を pick。pick した candidate は backlog から削除 (Cancelled に履歴を残したい場合は strikethrough)。
+2. **Active plan → Backlog**: plan の Improvement Candidates で `deferred` と判定したものは、archive 前に backlog の適切な priority section に転記する。出所として plan slug を明記。
+3. **3-deferred 閾値**: 同じ candidate が 3 plan 連続で deferred のまま動かなければ、High → Medium → Low → Cancelled の降格を検討する (本 ADR 本体の Improvement Capture loop 3-deferred 閾値と一貫)。
+4. **Cancelled の不可逆性**: Cancelled は履歴。再評価で active に戻す場合は新 entry として追加し、Cancelled の strikethrough は残す。
+
+### Enforcement
+
+- `audit lifecycle` の REQUIRED_FILES に `docs/plans/backlog.md` を追加 (存在のみ)。
+- `templates/plan.md` の Improvement Candidates Enum reference に「`deferred` 判定時は backlog.md への転記必須」を明記。
+- 機械的な hygiene check (Cancelled section が空、出所未記載 等) は本 PR では実装しない (over-engineering 回避、規律 + 監査ファイル存在の 2 段で運用開始)。
