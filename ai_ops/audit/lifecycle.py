@@ -71,16 +71,21 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
     ("audit", "--help"),
     ("check", "--help"),
     ("promote-plan", "--help"),
+    # 統合 subcommand (PR α)
+    ("propagate", "--help"),
+    ("worktree", "--help"),
+    ("setup", "--help"),
+    ("report-drift", "--help"),
+    ("review-pr", "--help"),
+    # 旧 alias (1 リリース猶予、deprecation 警告のみで動作)
     ("propagate-anchor", "--help"),
     ("propagate-init", "--help"),
     ("propagate-files", "--help"),
     ("worktree-new", "--help"),
     ("worktree-cleanup", "--help"),
-    ("report-drift", "--help"),
     ("setup-ci-workflow", "--help"),
     ("setup-codeowners", "--help"),
     ("setup-ruleset", "--help"),
-    ("review-pr", "--help"),
 )
 
 PLAN_STALE_DAYS = 30

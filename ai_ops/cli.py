@@ -12,7 +12,7 @@ from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
 from ai_ops.audit.security import run_security_audit
 from ai_ops.audit.standard import run_standard_audit
-from ai_ops.bootstrap import run_install, run_update
+from ai_ops.bootstrap import run_install, run_install_secrets, run_update
 from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
@@ -178,6 +178,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install tools at or below this tier (default 1 = required only)",
     )
     bootstrap.add_argument("--dry-run", action="store_true")
+    # PR α: Bitwarden 経由の secrets 登録 (ai-ops review-pr 等で使う API key)
+    bootstrap.add_argument(
+        "--with-secrets", dest="with_secrets", action="store_true",
+        help="In addition to tools, register API key secrets to a GitHub repo "
+             "via Bitwarden + gh secret set (requires BW_SESSION env var)",
+    )
+    bootstrap.add_argument(
+        "--repo", default=None,
+        help="Target GitHub repo (owner/name) for --with-secrets",
+    )
+    bootstrap.add_argument(
+        "--bw-anthropic-item", dest="bw_anthropic_item", default=None,
+        help="Bitwarden item name holding the Anthropic API key",
+    )
+    bootstrap.add_argument(
+        "--bw-openai-item", dest="bw_openai_item", default=None,
+        help="Bitwarden item name holding the OpenAI API key",
+    )
+    bootstrap.add_argument(
+        "--bw-field", dest="bw_field", default="api_key",
+        help="Bitwarden field name to read (default: api_key; falls back to login.password)",
+    )
     bootstrap.set_defaults(handler=handle_bootstrap)
 
     update = sub.add_parser(
@@ -207,9 +229,36 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--dry-run", action="store_true")
     promote.set_defaults(handler=handle_promote_plan)
 
+    # 統合: `ai-ops propagate --kind {anchor,init,files}` (PR α)
+    propagate = sub.add_parser(
+        "propagate",
+        help="Open PRs that propagate ai-ops state to managed projects (ADR 0011)",
+    )
+    propagate.add_argument(
+        "--kind", required=True, choices=("anchor", "init", "files"),
+        help="What to propagate: anchor (bump ai_ops_sha), init (commit "
+             "untracked harness.toml), files (refresh [harness_files] hashes)",
+    )
+    p_group = propagate.add_mutually_exclusive_group(required=True)
+    p_group.add_argument(
+        "--all", dest="all_projects", action="store_true",
+        help="Process every managed project under ghq",
+    )
+    p_group.add_argument(
+        "--project", type=Path,
+        help="Process a single project at the given path",
+    )
+    propagate.add_argument("--dry-run", action="store_true")
+    propagate.add_argument(
+        "--auto-yes", dest="auto_yes", action="store_true",
+        help="Skip per-project confirmation (CI use; ADR 0011)",
+    )
+    propagate.set_defaults(handler=handle_propagate)
+
+    # --- 旧 alias (1 リリース猶予、deprecation 警告付き) ---
     propagate_anchor = sub.add_parser(
         "propagate-anchor",
-        help="Open PRs that bump ai_ops_sha in managed projects (anchor-only)",
+        help="[DEPRECATED] Use `ai-ops propagate --kind anchor`",
     )
     pa_group = propagate_anchor.add_mutually_exclusive_group(required=True)
     pa_group.add_argument(
@@ -233,7 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     propagate_init = sub.add_parser(
         "propagate-init",
-        help="Open PRs that commit untracked .ai-ops/harness.toml in managed projects",
+        help="[DEPRECATED] Use `ai-ops propagate --kind init`",
     )
     pi_group = propagate_init.add_mutually_exclusive_group(required=True)
     pi_group.add_argument(
@@ -256,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     propagate_files = sub.add_parser(
         "propagate-files",
-        help="Open PRs that refresh [harness_files] hashes in managed projects",
+        help="[DEPRECATED] Use `ai-ops propagate --kind files`",
     )
     pf_group = propagate_files.add_mutually_exclusive_group(required=True)
     pf_group.add_argument(
@@ -277,9 +326,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propagate_files.set_defaults(handler=handle_propagate_files)
 
+    # 統合: `ai-ops worktree {new,cleanup}` (PR α)
+    worktree = sub.add_parser(
+        "worktree",
+        help="Manage sibling worktrees with 1:1:1 plan/branch/worktree binding (ADR 0010)",
+    )
+    wt_sub = worktree.add_subparsers(dest="wt_command")
+    wt_n = wt_sub.add_parser("new", help="Create a sibling worktree + branch + plan skeleton")
+    wt_n.add_argument("slug", help="Plan slug (also used in branch + worktree path)")
+    wt_n.add_argument(
+        "--type", dest="branch_type", default=DEFAULT_BRANCH_TYPE,
+        choices=list(VALID_BRANCH_TYPES),
+        help=f"Branch type prefix (default: {DEFAULT_BRANCH_TYPE})",
+    )
+    wt_n.add_argument(
+        "--base", dest="base_branch", default="main",
+        help="Base branch to branch from (default: main)",
+    )
+    wt_n.add_argument("--dry-run", action="store_true")
+    wt_n.set_defaults(handler=handle_worktree_new)
+    wt_c = wt_sub.add_parser(
+        "cleanup",
+        help="Remove worktrees whose PR is merged AND plan is archived",
+    )
+    wt_c.add_argument(
+        "--auto", action="store_true",
+        help="Skip per-worktree confirmation; remove all eligible worktrees",
+    )
+    wt_c.add_argument("--dry-run", action="store_true")
+    wt_c.set_defaults(handler=handle_worktree_cleanup)
+
+    # --- 旧 alias (1 リリース猶予、deprecation 警告付き) ---
     wt_new = sub.add_parser(
         "worktree-new",
-        help="Create a sibling git worktree + branch + plan skeleton (ADR 0010)",
+        help="[DEPRECATED] Use `ai-ops worktree new`",
     )
     wt_new.add_argument("slug", help="Plan slug (also used in branch + worktree path)")
     wt_new.add_argument(
@@ -296,7 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     wt_cleanup = sub.add_parser(
         "worktree-cleanup",
-        help="Remove worktrees whose branch's PR is merged AND plan is archived (ADR 0010)",
+        help="[DEPRECATED] Use `ai-ops worktree cleanup`",
     )
     wt_cleanup.add_argument(
         "--auto", action="store_true",
@@ -321,9 +401,54 @@ def build_parser() -> argparse.ArgumentParser:
     report_drift.add_argument("--dry-run", action="store_true")
     report_drift.set_defaults(handler=handle_report_drift)
 
+    # 統合: `ai-ops setup {ci,codeowners,ruleset}` (PR α)
+    setup_p = sub.add_parser(
+        "setup",
+        help="Configure ai-ops integration in a managed project (ADR 0011)",
+    )
+    su_sub = setup_p.add_subparsers(dest="setup_component")
+
+    su_ci = su_sub.add_parser(
+        "ci", help="Open a PR adding `.github/workflows/ai-ops.yml`",
+    )
+    su_ci.add_argument("--project", type=Path, required=True)
+    su_ci.add_argument(
+        "--tier", default="D", choices=list(VALID_TIERS) + ["D"],
+        help="Tier (A/B/C/D) — sets `tier:` input in the workflow caller",
+    )
+    su_ci.add_argument(
+        "--ai-ops-ref", dest="ai_ops_ref", default="main",
+        help="ai-ops branch / tag the workflow will install from (default: main)",
+    )
+    su_ci.add_argument("--dry-run", action="store_true")
+    su_ci.set_defaults(handler=handle_setup_ci_workflow)
+
+    su_co = su_sub.add_parser(
+        "codeowners", help="Open a PR adding `.github/CODEOWNERS`",
+    )
+    su_co.add_argument("--project", type=Path, required=True)
+    su_co.add_argument(
+        "--owner", default=None,
+        help="GitHub username to route reviews to (default: project's repo owner)",
+    )
+    su_co.add_argument("--dry-run", action="store_true")
+    su_co.set_defaults(handler=handle_setup_codeowners)
+
+    su_rs = su_sub.add_parser(
+        "ruleset", help="Apply a tier ruleset via `gh api`",
+    )
+    su_rs.add_argument("--project", type=Path, required=True)
+    su_rs.add_argument(
+        "--tier", required=True, choices=list(VALID_TIERS),
+        help="Tier (A/B/C) — selects the ruleset profile",
+    )
+    su_rs.add_argument("--dry-run", action="store_true")
+    su_rs.set_defaults(handler=handle_setup_ruleset)
+
+    # --- 旧 alias (1 リリース猶予、deprecation 警告付き) ---
     setup_ci = sub.add_parser(
         "setup-ci-workflow",
-        help="Open a PR adding `.github/workflows/ai-ops.yml` to a project (ADR 0011)",
+        help="[DEPRECATED] Use `ai-ops setup ci`",
     )
     setup_ci.add_argument(
         "--project", type=Path, required=True,
@@ -342,7 +467,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup_co = sub.add_parser(
         "setup-codeowners",
-        help="Open a PR adding `.github/CODEOWNERS` for ai-ops routing (ADR 0011)",
+        help="[DEPRECATED] Use `ai-ops setup codeowners`",
     )
     setup_co.add_argument(
         "--project", type=Path, required=True,
@@ -357,7 +482,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup_rs = sub.add_parser(
         "setup-ruleset",
-        help="Apply a tier ruleset via gh api (creates / updates) (ADR 0011)",
+        help="[DEPRECATED] Use `ai-ops setup ruleset`",
     )
     setup_rs.add_argument(
         "--project", type=Path, required=True,
@@ -499,7 +624,21 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
-    return run_install(tier_max=args.tier, dry_run=args.dry_run)
+    rc = run_install(tier_max=args.tier, dry_run=args.dry_run)
+    if not args.with_secrets:
+        return rc
+    if not args.repo:
+        print("Error: --with-secrets requires --repo OWNER/NAME", file=sys.stderr)
+        return 2
+    secrets_rc = run_install_secrets(
+        repo=args.repo,
+        anthropic_item=args.bw_anthropic_item,
+        openai_item=args.bw_openai_item,
+        bw_field=args.bw_field,
+        dry_run=args.dry_run,
+    )
+    # tool install と secrets 登録の両方を成功扱いにする
+    return rc or secrets_rc
 
 
 def handle_update(args: argparse.Namespace, _root: Path) -> int:
@@ -515,7 +654,33 @@ def handle_promote_plan(args: argparse.Namespace, root: Path) -> int:
     )
 
 
+def handle_propagate(args: argparse.Namespace, root: Path) -> int:
+    """統合 propagate handler。`--kind` で 3 種を振り分ける。"""
+    runner = {
+        "anchor": run_propagate_anchor,
+        "init": run_propagate_init,
+        "files": run_propagate_files,
+    }[args.kind]
+    return runner(
+        ai_ops_root=root,
+        project=args.project,
+        all_projects=args.all_projects,
+        dry_run=args.dry_run,
+        auto_yes=args.auto_yes,
+    )
+
+
+def _deprecation_notice(old: str, new: str) -> None:
+    """旧 subcommand 使用時に stderr へ deprecation 警告を出す。"""
+    print(
+        f"warning: `ai-ops {old}` is deprecated, use `ai-ops {new}` instead "
+        "(removed in next minor release).",
+        file=sys.stderr,
+    )
+
+
 def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
+    _deprecation_notice("propagate-anchor", "propagate --kind anchor")
     return run_propagate_anchor(
         ai_ops_root=root,
         project=args.project,
@@ -526,6 +691,7 @@ def handle_propagate_anchor(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
+    _deprecation_notice("propagate-init", "propagate --kind init")
     return run_propagate_init(
         ai_ops_root=root,
         project=args.project,
@@ -536,6 +702,7 @@ def handle_propagate_init(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
+    _deprecation_notice("propagate-files", "propagate --kind files")
     return run_propagate_files(
         ai_ops_root=root,
         project=args.project,
@@ -546,6 +713,9 @@ def handle_propagate_files(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_worktree_new(args: argparse.Namespace, root: Path) -> int:
+    # 旧名 `worktree-new` 経由 (`args.command` で判定) なら deprecation 警告。
+    if args.command == "worktree-new":
+        _deprecation_notice("worktree-new", "worktree new")
     return run_worktree_new(
         slug=args.slug,
         branch_type=args.branch_type,
@@ -556,6 +726,8 @@ def handle_worktree_new(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_worktree_cleanup(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "worktree-cleanup":
+        _deprecation_notice("worktree-cleanup", "worktree cleanup")
     return run_worktree_cleanup(
         auto=args.auto,
         dry_run=args.dry_run,
@@ -572,6 +744,8 @@ def handle_report_drift(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_setup_ci_workflow(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "setup-ci-workflow":
+        _deprecation_notice("setup-ci-workflow", "setup ci")
     return run_setup_ci_workflow(
         project=args.project.resolve(),
         tier=args.tier,
@@ -581,6 +755,8 @@ def handle_setup_ci_workflow(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_setup_codeowners(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "setup-codeowners":
+        _deprecation_notice("setup-codeowners", "setup codeowners")
     return run_setup_codeowners(
         project=args.project.resolve(),
         owner=args.owner,
@@ -589,6 +765,8 @@ def handle_setup_codeowners(args: argparse.Namespace, root: Path) -> int:
 
 
 def handle_setup_ruleset(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "setup-ruleset":
+        _deprecation_notice("setup-ruleset", "setup ruleset")
     return run_setup_ruleset(
         project=args.project.resolve(),
         tier=args.tier,

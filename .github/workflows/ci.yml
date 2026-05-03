@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
+  statuses: write
 
 env:
   GIT_CONFIG_COUNT: "1"
@@ -64,3 +66,30 @@ jobs:
         run: nix flake check --all-systems --no-build
       - name: nix build checks / current runner
         run: nix build --no-link ".#checks.${{ matrix.system }}.all"
+
+  # ai-ops 自身を ai-ops review-pr で dogfood する (PR α 以降)。
+  # ai-ops は Tier A (trunk-based) 想定なので、結果は Comment + status check
+  # として表示するが、status check の失敗で merge を止めない (continue-on-error)。
+  # ANTHROPIC_API_KEY または OPENAI_API_KEY が secrets に登録されていない場合は
+  # neutral を返して exit 0 (CI を壊さない、設計通り)。
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: ai-ops review-pr (self-dogfood)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m ai_ops review-pr \
+            --pr ${{ github.event.pull_request.number }} \
+            --provider auto

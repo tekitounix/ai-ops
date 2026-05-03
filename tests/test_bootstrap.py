@@ -163,6 +163,87 @@ def test_unsupported_os_returns_error_code() -> None:
     assert rc == 1
 
 
+# ---------- run_install_secrets (PR α: Bitwarden + gh) ----------
+
+
+def test_install_secrets_returns_2_when_bw_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: False)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    rc = bootstrap.run_install_secrets(
+        repo="o/r", anthropic_item="X", openai_item=None,
+    )
+    assert rc == 2
+
+
+def test_install_secrets_returns_2_when_session_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: True)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    monkeypatch.delenv("BW_SESSION", raising=False)
+    rc = bootstrap.run_install_secrets(
+        repo="o/r", anthropic_item="X", openai_item=None,
+    )
+    assert rc == 2
+
+
+def test_install_secrets_returns_2_when_no_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: True)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    monkeypatch.setenv("BW_SESSION", "session-token")
+    rc = bootstrap.run_install_secrets(
+        repo="o/r", anthropic_item=None, openai_item=None,
+    )
+    assert rc == 2
+
+
+def test_install_secrets_proceeds_after_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_confirm を True 返却に固定すると secrets 登録ループが回る。"""
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: True)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    monkeypatch.setenv("BW_SESSION", "session-token")
+    monkeypatch.setattr(bootstrap, "_bw_get_field", lambda item, field: "fake-key")
+    monkeypatch.setattr(bootstrap, "_confirm", lambda *a, **kw: True)
+
+    secret_calls: list[tuple] = []
+
+    def fake_set(repo, key, value, dry_run):
+        secret_calls.append((repo, key, value, dry_run))
+        return True
+
+    monkeypatch.setattr(bootstrap, "_gh_secret_set", fake_set)
+    rc = bootstrap.run_install_secrets(
+        repo="o/r",
+        anthropic_item="A",
+        openai_item="O",
+        dry_run=True,
+    )
+    assert rc == 0
+    assert len(secret_calls) == 2
+    assert {call[1] for call in secret_calls} == {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+
+
+def test_install_secrets_records_failure_when_bw_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_bw_available", lambda: True)
+    monkeypatch.setattr(bootstrap, "_gh_available", lambda: True)
+    monkeypatch.setenv("BW_SESSION", "session-token")
+    monkeypatch.setattr(bootstrap, "_bw_get_field", lambda item, field: None)
+    monkeypatch.setattr(bootstrap, "_gh_secret_set", lambda *a, **kw: True)
+    monkeypatch.setattr(bootstrap, "_confirm", lambda *a, **kw: True)
+    rc = bootstrap.run_install_secrets(
+        repo="o/r", anthropic_item="A", openai_item=None, dry_run=True,
+    )
+    assert rc == 1
+
+
 def test_nix_install_uses_determinate_installer() -> None:
     """Nix install must use Determinate Nix Installer for all OSes (macOS upgrade resilience)."""
     nix_tool = next(t for t in bootstrap.TOOLS if t.name == "nix")

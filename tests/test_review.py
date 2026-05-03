@@ -86,7 +86,11 @@ def test_review_uses_anthropic_when_key_set(monkeypatch: pytest.MonkeyPatch) -> 
     def fake_anthropic(model, system, user, key):
         called["provider"] = "anthropic"
         called["key"] = key
-        return json.dumps({"state": "success", "summary": "ok", "body": "ok"})
+        return (
+            json.dumps({"state": "success", "summary": "ok", "body": "ok"}),
+            1234,  # input tokens
+            56,    # output tokens
+        )
 
     monkeypatch.setattr(review, "_call_anthropic", fake_anthropic)
     monkeypatch.setattr(review, "_call_openai", lambda *a, **kw: pytest.fail("openai must not be called"))
@@ -99,6 +103,10 @@ def test_review_uses_anthropic_when_key_set(monkeypatch: pytest.MonkeyPatch) -> 
     assert called["provider"] == "anthropic"
     assert called["key"] == "key-a"
     assert result.state == "success"
+    # cost footer が body に追記されている
+    assert "ai-ops AI Review" in result.body
+    assert "input=1,234 tok" in result.body
+    assert "output=56 tok" in result.body
 
 
 def test_review_falls_back_to_openai_when_only_openai_key(
@@ -110,7 +118,10 @@ def test_review_falls_back_to_openai_when_only_openai_key(
 
     def fake_openai(model, system, user, key):
         called["provider"] = "openai"
-        return json.dumps({"state": "success", "summary": "ok", "body": "ok"})
+        return (
+            json.dumps({"state": "success", "summary": "ok", "body": "ok"}),
+            500, 30,
+        )
 
     monkeypatch.setattr(review, "_call_anthropic", lambda *a, **kw: pytest.fail("anthropic must not be called"))
     monkeypatch.setattr(review, "_call_openai", fake_openai)
@@ -122,6 +133,7 @@ def test_review_falls_back_to_openai_when_only_openai_key(
     result = review.review_with_llm(ctx, provider="auto")
     assert called["provider"] == "openai"
     assert result.state == "success"
+    assert "input=500 tok" in result.body
 
 
 # ---------- gather_context: gh 経由のデータ収集 ----------
@@ -309,3 +321,30 @@ def test_detect_plan_path_finds_first_plan_in_diff() -> None:
 def test_detect_plan_path_returns_none_when_no_plan() -> None:
     diff = "+++ b/some/other/file.py\n"
     assert review._detect_plan_path(diff) is None
+
+
+# ---------- cost monitor (PR α) ----------
+
+
+def test_estimate_cost_known_model() -> None:
+    """既知 model は cost を返す。"""
+    # claude-sonnet-4-6: input $3/MTok, output $15/MTok
+    cost = review._estimate_cost_usd("claude-sonnet-4-6", 1_000_000, 100_000)
+    assert cost == pytest.approx(3.0 + 1.5)  # 3 + 100k × 15/MTok
+
+
+def test_estimate_cost_unknown_model_returns_none() -> None:
+    assert review._estimate_cost_usd("nonexistent-model", 1000, 100) is None
+
+
+def test_format_cost_footer_known_model() -> None:
+    footer = review._format_cost_footer("claude-sonnet-4-6", 24_938, 412)
+    assert "claude-sonnet-4-6" in footer
+    assert "input=24,938 tok" in footer
+    assert "output=412 tok" in footer
+    assert "estimated_cost=$" in footer
+
+
+def test_format_cost_footer_unknown_model() -> None:
+    footer = review._format_cost_footer("foo", 100, 10)
+    assert "n/a (unknown model)" in footer
