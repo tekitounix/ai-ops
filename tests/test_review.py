@@ -81,6 +81,10 @@ def test_review_skips_when_no_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_review_uses_anthropic_when_key_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    # Nix sandbox では Path.home() = /homeless-shelter で書き込めないので
+    # cost cache の append と budget read を mock で無効化する。
+    monkeypatch.setattr(review, "_append_cost_entry", lambda *a, **kw: None)
+    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
     called: dict[str, Any] = {}
 
     def fake_anthropic(model, system, user, key):
@@ -114,6 +118,8 @@ def test_review_falls_back_to_openai_when_only_openai_key(
 ) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "key-o")
+    monkeypatch.setattr(review, "_append_cost_entry", lambda *a, **kw: None)
+    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
     called: dict[str, Any] = {}
 
     def fake_openai(model, system, user, key):
