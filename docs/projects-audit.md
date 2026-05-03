@@ -50,6 +50,7 @@ python -m ai_ops audit projects
 | `remote_anchor_synced` | `true` / `false` / `null` — `origin/<default-branch>` の `.ai-ops/harness.toml` が `ai_ops_sha == 現 ai-ops HEAD` を持つか。`true` = 伝播完了、`false` = anchor-sync PR が必要、`null` = 判定不能 (`gh` 無し、fetch 失敗、または default branch に manifest 無し)。`true` の時、ローカル `harness_drift` が True でも優先度 P1 に昇格しない (使用者は pull するだけで足りる)。 |
 | `workflow_tier` | `A` / `B` / `C` / `D` — ADR 0009 に従って宣言された workflow tier。`A` = trunk-based ソロ、`B` = 管理 feature-branch + PR、`C` = 本番 / 公開でレビューあり、`D` = ad-hoc スパイク (`harness.toml` に `workflow_tier` 欄が無い場合の default)。 |
 | `tier_violations` | 宣言 tier からの逸脱の人間可読文字列リスト。空リスト = clean。default では安価な検出のみ (long-lived branch、manifest が default branch に無い等)。`INFO:` で始まる文字列は表示するが優先度は上げない (Tier D で「manifest が default branch に無い」notice が INFO 扱いなのは、使用者がその状態を明示的に受け入れたため)。 |
+| `recommended_tier` | `A` / `B` / `C` / `null` — managed 且つ未宣言 (default D) の project に対する推薦 tier。`gh repo view` の visibility と contributors から保守的に判定 (public → C、private + multi → B、private + solo + 活動中 → A、long-dormant → null)。**P2 観察のみ** で priority に乗らない (PR γ 追加、誤検知で運用を乱さないため)。 |
 
 加えて CLI が一度だけ計算する derived フラグが 3 つ: `has_stack`、`is_docs_only`、`harness_drift`。ファイル名のみ — secret の **値** は決して開かない (CLI の `_count_secret_files` は名称ベース)。
 

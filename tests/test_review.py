@@ -234,7 +234,7 @@ def test_run_review_pr_dry_run_does_not_post(
         agents_md="A", adrs={}, harness_toml=None, plan_md=None,
     )
     monkeypatch.setattr(review, "gather_context", lambda repo, pr: fake_ctx)
-    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto": review.ReviewResult(
+    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None: review.ReviewResult(
         state="success", summary="ok", body="### Review body",
     ))
 
@@ -270,7 +270,7 @@ def test_run_review_pr_posts_comment_and_status(
         agents_md="A", adrs={}, harness_toml=None, plan_md=None,
     )
     monkeypatch.setattr(review, "gather_context", lambda repo, pr: fake_ctx)
-    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto": review.ReviewResult(
+    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None: review.ReviewResult(
         state="failure", summary="bad", body="# Issues",
     ))
 
@@ -348,3 +348,91 @@ def test_format_cost_footer_known_model() -> None:
 def test_format_cost_footer_unknown_model() -> None:
     footer = review._format_cost_footer("foo", 100, 10)
     assert "n/a (unknown model)" in footer
+
+
+# ---------- PR ε: monthly budget cap + cache ----------
+
+
+def test_review_skipped_when_budget_exceeded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`monthly_usd_limit` を超えていたら LLM を呼ばずに neutral skip。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: 1.00)
+    monkeypatch.setattr(review, "_read_monthly_total_usd", lambda month=None: 1.50)
+
+    def boom_anthropic(*a, **kw):
+        pytest.fail("anthropic must not be called when budget is exceeded")
+
+    monkeypatch.setattr(review, "_call_anthropic", boom_anthropic)
+    ctx = review.PRContext(
+        repo="o/r", number=1, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff="",
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    result = review.review_with_llm(ctx, provider="auto", cwd=tmp_path)
+    assert result.state == "neutral"
+    assert "budget exceeded" in result.summary.lower()
+
+
+def test_review_records_cost_to_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """LLM 呼び出し後に月次キャッシュへ追記される。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
+
+    appended: list[dict] = []
+
+    def fake_append(repo, pr, model, in_tok, out_tok, cost):
+        appended.append({
+            "repo": repo, "pr": pr, "model": model,
+            "input": in_tok, "output": out_tok, "cost": cost,
+        })
+
+    monkeypatch.setattr(review, "_append_cost_entry", fake_append)
+    monkeypatch.setattr(
+        review, "_call_anthropic",
+        lambda *a, **kw: (
+            json.dumps({"state": "success", "summary": "ok", "body": "ok"}),
+            1000, 50,
+        ),
+    )
+    ctx = review.PRContext(
+        repo="o/r", number=42, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff="",
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    review.review_with_llm(ctx, provider="auto", cwd=tmp_path)
+    assert len(appended) == 1
+    assert appended[0]["repo"] == "o/r"
+    assert appended[0]["pr"] == 42
+    assert appended[0]["input"] == 1000
+    assert appended[0]["output"] == 50
+
+
+def test_read_monthly_budget_from_harness_toml(tmp_path: Path) -> None:
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review_budget]\nmonthly_usd_limit = 5.0\n',
+        encoding="utf-8",
+    )
+    assert review._read_monthly_budget_usd(tmp_path) == 5.0
+
+
+def test_read_monthly_budget_env_overrides_toml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review_budget]\nmonthly_usd_limit = 5.0\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AI_OPS_REVIEW_BUDGET_USD_MONTH", "1.5")
+    assert review._read_monthly_budget_usd(tmp_path) == 1.5
+
+
+def test_read_monthly_budget_returns_none_without_config(tmp_path: Path) -> None:
+    assert review._read_monthly_budget_usd(tmp_path) is None

@@ -2,6 +2,13 @@ name: propagate-cron
 # ADR 0011: scheduled propagation of ai-ops improvements to managed
 # projects. Each propagator opens PRs (existing mechanism); user
 # reviews via standard GitHub Notifications.
+#
+# IMPORTANT (PR ε): GITHUB_TOKEN is scoped to the ai-ops repo only and
+# CANNOT push branches or open PRs against managed projects (e.g.
+# umipal, mi_share). A dedicated PAT (or GitHub App token) with `repo`
+# scope on every managed project must be set as the
+# `AI_OPS_PROPAGATE_PAT` secret. The first step refuses to run when
+# the secret is missing — silent fail is worse than no cron at all.
 
 on:
   schedule:
@@ -30,22 +37,27 @@ jobs:
       - name: Verify gh CLI
         run: gh --version
 
-      - name: Propagate anchor (bump ai_ops_sha)
+      - name: Verify AI_OPS_PROPAGATE_PAT is set
+        env:
+          AI_OPS_PROPAGATE_PAT: ${{ secrets.AI_OPS_PROPAGATE_PAT }}
+        run: |
+          if [ -z "$AI_OPS_PROPAGATE_PAT" ]; then
+            echo "::error::AI_OPS_PROPAGATE_PAT not set." >&2
+            echo "::error::propagate-cron requires a PAT with 'repo' scope on every managed project." >&2
+            echo "::error::Create one (Settings → Developer settings → Personal access tokens) and add it as a repo secret." >&2
+            exit 1
+          fi
+
+      - name: Propagate (anchor → init → files)
         # `--auto-yes` skips per-project Y/n confirmation; the workflow
         # file itself is the user's prior approval per ADR 0011.
+        # PR α renamed propagate-{anchor,init,files} to a single
+        # `propagate --kind X`. PR ε scans .github/workflows/ to keep
+        # this file from drifting back to the deprecated aliases.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AI_OPS_PROPAGATE_PAT }}
         run: |
-          python -m ai_ops propagate-anchor --all --auto-yes || true
-
-      - name: Propagate init (commit untracked manifests)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python -m ai_ops propagate-init --all --auto-yes || true
-
-      - name: Propagate files (refresh harness_files hashes)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python -m ai_ops propagate-files --all --auto-yes || true
+          set -e
+          python -m ai_ops propagate --kind anchor --all --auto-yes
+          python -m ai_ops propagate --kind init   --all --auto-yes
+          python -m ai_ops propagate --kind files  --all --auto-yes

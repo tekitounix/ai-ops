@@ -1155,3 +1155,21 @@ def test_real_repo_passes_deprecated_alias_check() -> None:
     repo = Path(__file__).resolve().parents[1]
     failures = _check_deprecated_alias_in_active_docs(repo)
     assert failures == [], f"deprecated aliases still in docs: {failures}"
+
+
+# ---------- Phase 12 PR ε extension: workflow scan ----------
+
+
+def test_deprecated_alias_detected_in_workflow_yaml(tmp_path: Path) -> None:
+    """`.github/workflows/*.yml` 内の旧 alias も Phase 12 が検出する (PR ε, H1)。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "cron.yml").write_text(
+        "jobs:\n  x:\n    steps:\n      - run: ai-ops propagate-anchor --all\n",
+        encoding="utf-8",
+    )
+    failures = _check_deprecated_alias_in_active_docs(tmp_path)
+    assert any(".github/workflows/cron.yml" in f for f in failures)
+    assert any("propagate-anchor" in f for f in failures)
