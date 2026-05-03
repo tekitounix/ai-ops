@@ -1,125 +1,125 @@
-# ai-ops Operation Guide
+# ai-ops 運用ガイド
 
-This is the master entry point for understanding how ai-ops operates. Read this first; follow the deep-dive links for details.
+ai-ops の運用全体を理解するためのマスター入口である。まずこの文書を読み、必要に応じて各 deep-dive へ進む。
 
-## What ai-ops does, in one paragraph
+## ai-ops とは何か
 
-ai-ops gives AI coding agents (Claude Code, Codex, Cursor, …) a shared, repo-committed playbook for setting up, migrating, auditing, and propagating changes across software projects. Each project has tier-appropriate git workflow norms (ADR 0009), parallel work happens in sibling git worktrees bound 1:1:1 to plans (ADR 0010), and improvements to ai-ops itself reach managed projects through GitHub-native PRs and Issues (ADR 0011) — with the user's GitHub Notifications as the central notification channel.
+ai-ops は、AI コーディングエージェント (Claude Code、Codex、Cursor など) に対して、複数プロジェクトを横断する共通の運用台本を repo にコミットして提供する仕組みである。台本の中身は、新規プロジェクトの立ち上げ、既存プロジェクトの取り込み、監査、変更の伝播。各プロジェクトは tier に応じた git ワークフロー規約 (ADR 0009) を持ち、並行作業は plan と 1:1:1 で結びついた sibling worktree で行い (ADR 0010)、ai-ops 自身の改善は GitHub-native な PR / Issue を経由して管理対象プロジェクトへ届く (ADR 0011)。通知の中心は使用者の GitHub Notifications。
 
-## The lifecycle
+## ライフサイクル
 
-Every non-trivial work item runs through:
+非自明な作業は次のフローを通る。
 
 ```text
 Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Verify → Adopt
 ```
 
-The agent reads context (Discovery), drafts a Brief with project-specific judgment, the user confirms, and only then are files modified with normal tools. Detailed phases and the Fact / Inference / Risk classification: [`docs/ai-first-lifecycle.md`](ai-first-lifecycle.md).
+エージェントは状況を読み (Discovery)、プロジェクト固有の判断を Brief にまとめ、使用者が確認した後にはじめて通常のツールでファイルを変更する。各フェーズの詳細と Fact / Inference / Risk 分類は [`docs/ai-first-lifecycle.md`](ai-first-lifecycle.md) を参照。
 
-## Sub-flows: pick by intent
+## 目的別 sub-flow
 
-| You want to … | Use this sub-flow | Doc |
+| やりたいこと | 使う sub-flow | doc |
 |---|---|---|
-| Start a new project | `ai-ops new` → Brief → execute | [`ai-first-lifecycle.md`](ai-first-lifecycle.md) |
-| Bring an existing project under ai-ops | `ai-ops migrate <path>` → Brief → execute | [`project-addition-and-migration.md`](project-addition-and-migration.md) |
-| Fix drift in a managed project | `align this project` prompt → Brief → execute | [`realignment.md`](realignment.md) |
-| Move a repo into `~/ghq/...` | Phase-1 read-only Discovery → relocation Brief → execute | [`project-relocation.md`](project-relocation.md) |
-| Survey every ghq-tracked project | `audit my projects` prompt → priority-sorted table → per-project sub-flow | [`projects-audit.md`](projects-audit.md) |
-| Push ai-ops improvements to managed projects | `propagate-anchor` / `propagate-init` / `propagate-files` → PRs to each project | (commands; see Quick reference below) |
-| Run ai-ops on its own work | self-check + plans + ADRs | [`self-operation.md`](self-operation.md) |
+| 新規プロジェクトを始める | `ai-ops new` → Brief → 実行 | [`ai-first-lifecycle.md`](ai-first-lifecycle.md) |
+| 既存プロジェクトを ai-ops 配下に取り込む | `ai-ops migrate <path>` → Brief → 実行 | [`project-addition-and-migration.md`](project-addition-and-migration.md) |
+| 管理中プロジェクトの drift を修正 | `align this project` プロンプト → Brief → 実行 | [`realignment.md`](realignment.md) |
+| repo を `~/ghq/...` 配下へ移動 | Phase 1 read-only Discovery → relocation Brief → 実行 | [`project-relocation.md`](project-relocation.md) |
+| ghq 管理下の全プロジェクトを一括監査 | `audit my projects` プロンプト → 優先度ソート表 → 個別 sub-flow | [`projects-audit.md`](projects-audit.md) |
+| ai-ops の改善を管理対象プロジェクトへ反映 | `propagate-anchor` / `propagate-init` / `propagate-files` → 各プロジェクトに PR | (CLI 一覧参照) |
+| ai-ops 自身の作業を運用 | self-check + plans + ADR | [`self-operation.md`](self-operation.md) |
 
-Each sub-flow follows the same Lifecycle (Discovery → Brief → Confirm → Execute), the difference is scope and entry conditions.
+各 sub-flow は同じライフサイクル (Discovery → Brief → Confirm → Execute) を辿る。違いは scope と入口条件のみ。
 
-## Workflow tiers (ADR 0009)
+## ワークフロー tier (ADR 0009)
 
-Each managed project declares one of 4 tiers in its `.ai-ops/harness.toml::workflow_tier`. Tier sets the expected git workflow; ai-ops audits but never enforces.
+各管理対象プロジェクトは `.ai-ops/harness.toml::workflow_tier` で 4 段階の tier を宣言する。tier は期待される git 運用規範を決め、ai-ops は監査するが強制はしない。
 
-- **Tier A — Lightweight**: trunk-based, direct push to main allowed, CI required green. ai-ops itself, knx3-style personal tools.
-- **Tier B — Managed**: feature branch + PR required, branch protection. mi_share, audio-dsp-docs.
-- **Tier C — Production / Public**: above + reviewer approval + signed commits + merge queue.
-- **Tier D — Spike / Research**: anything goes (long-lived branches accepted). umipal phase-a, fx-llm-research.
+- **Tier A — 軽量**: trunk-based、main への直接 push 可、CI は green 必須。ai-ops 自身、knx3 系の個人ツールなど。
+- **Tier B — 管理**: feature branch + PR 必須、ブランチ保護あり。mi_share、audio-dsp-docs など。
+- **Tier C — 本番 / 公開**: 上記に加えてレビュー承認、署名コミット、merge queue を要求。
+- **Tier D — スパイク / 研究**: 何でもあり (long-lived branch も許容)。umipal phase-a、fx-llm-research など。
 
-Missing field defaults to D (most permissive). Audit signal `tier_violations` flags when actual practice deviates from declared tier. Full definition + detection rules: [ADR 0009](decisions/0009-git-workflow-tiers.md).
+宣言が無い場合は D (最も寛容) として扱う。監査の `tier_violations` 信号は、宣言と実態が乖離した時に立つ。詳細定義と検出ルールは [ADR 0009](decisions/0009-git-workflow-tiers.md)。
 
-## Worktree-based parallel work (ADR 0010)
+## worktree ベース並行作業 (ADR 0010)
 
-For non-trivial work (multiple commits, parallel streams, anything warranting a plan):
+非自明な作業 (複数コミット、並行ストリーム、plan を要する任意の作業) では、次の 1:1:1 を維持する。
 
-- One **plan** at `docs/plans/<slug>/plan.md`
-- One **branch** named `<type>/<slug>` (`feat`/`fix`/`chore`/`docs`/`refactor`)
-- One **worktree** at `<repo-parent>/<repo-name>.<slug>/` (sibling layout)
+- **plan** 1 つ (`docs/plans/<slug>/plan.md`)
+- **branch** 1 つ (`<type>/<slug>`、`<type>` は `feat`/`fix`/`chore`/`docs`/`refactor`)
+- **worktree** 1 つ (`<repo-parent>/<repo-name>.<slug>/`、sibling 配置)
 
-`ai-ops worktree-new <slug>` creates all three with a seeded plan from the canonical template. `ai-ops worktree-cleanup` removes worktrees whose branch's PR is merged AND plan is archived (both signals required for safety). Practical limit is 3–5 worktrees per repo. Full convention: [ADR 0010](decisions/0010-worktree-workflow.md).
+`ai-ops worktree-new <slug>` で 3 点セットを一気に作成し、canonical テンプレートから plan の skeleton を seed する。`ai-ops worktree-cleanup` は「PR がマージ済み AND plan が archive 済み」の両方が成立した worktree のみ削除する (安全のため両信号必須)。実用上の上限は 1 repo あたり 3〜5 worktree。詳しい規約は [ADR 0010](decisions/0010-worktree-workflow.md)。
 
-## GitHub-native ecosystem operation (ADR 0011)
+## GitHub-native エコシステム運用 (ADR 0011)
 
-ai-ops's primary user-facing surface is **GitHub Issues + sub-issues + Projects v2 board + scheduled Actions + Repository Rulesets + CODEOWNERS** — not local CLI invocations. The user's existing GitHub Notifications carry drift status and propagation work.
+ai-ops の主たる使用者向け表面は、ローカル CLI ではなく **GitHub Issues + sub-issues + Projects v2 ボード + scheduled Actions + Repository Rulesets + CODEOWNERS** である。drift 状況や伝播作業は使用者の既存の GitHub Notifications に乗る。
 
-Three layers:
+3 層構成。
 
-1. **ai-ops repo runs scheduled workflows** (`.github/workflows/ecosystem-watch.yml`, `propagate-cron.yml`):
-   - Weekly cron audits managed projects → opens / updates / closes sub-issues on the central "Ecosystem" parent issue
-   - Weekly cron runs `propagate-* --auto-yes` → opens PRs in each managed project
-2. **Each managed project hosts a thin caller workflow** (`.github/workflows/ai-ops.yml`, opt-in via `ai-ops setup-ci-workflow`) that calls ai-ops's reusable `managed-project-check.yml` to run `audit harness --strict` on PR + schedule. Tier B+ rulesets make this a required status check.
-3. **CODEOWNERS routes ai-ops-related changes to the project owner** (`ai-ops setup-codeowners`). Tier rulesets enforce per-tier policy (`ai-ops setup-ruleset --tier {A,B,C}`).
+1. **ai-ops repo がスケジュール workflow を回す** (`.github/workflows/ecosystem-watch.yml`、`propagate-cron.yml`)
+   - 週次 cron で管理対象プロジェクトを監査 → 中央の "Ecosystem" 親 issue 配下に sub-issue を open / update / close
+   - 週次 cron で `propagate-* --auto-yes` を実行 → 各管理対象プロジェクトに PR を open
+2. **各管理対象プロジェクトに薄い caller workflow を配置** (`.github/workflows/ai-ops.yml`、opt-in は `ai-ops setup-ci-workflow`)。これは ai-ops 側の reusable `managed-project-check.yml` を呼び、PR と schedule で `audit harness --strict` を走らせる。Tier B 以上では Repository Ruleset により必須ステータスチェックになる。
+3. **CODEOWNERS で ai-ops 関連変更をプロジェクト所有者にルーティング** (`ai-ops setup-codeowners`)。tier 別 ruleset (`ai-ops setup-ruleset --tier {A,B,C}`) で tier 規範を強制する。
 
-Drift detection runs locally by default and via scheduled GitHub Actions; either way, the result lands as Issues / sub-issues / PRs in standard GitHub UI. Full design + setup workflow: [ADR 0011](decisions/0011-github-native-operation.md).
+drift 検出はローカルでもスケジュール GitHub Actions でも回り、結果は標準的な GitHub UI に Issue / sub-issue / PR として現れる。設計と setup フローの詳細は [ADR 0011](decisions/0011-github-native-operation.md)。
 
-## Plan-driven execution (ADR 0008)
+## plan 駆動実行 (ADR 0008)
 
-Non-trivial work is tracked in `docs/plans/<slug>/plan.md` (canonical schema in [`templates/plan.md`](../templates/plan.md)). Required sections: Purpose / Big Picture, Progress, Surprises & Discoveries, Decision Log, Outcomes & Retrospective, Improvement Candidates, Context, Plan of Work, Concrete Steps, Validation and Acceptance, Idempotence, Artifacts, Interfaces.
+非自明な作業は `docs/plans/<slug>/plan.md` で追跡する (canonical schema は [`templates/plan.md`](../templates/plan.md))。必須 section は Purpose / Big Picture、Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective、Improvement Candidates、Context、Plan of Work、Concrete Steps、Validation and Acceptance、Idempotence、Artifacts、Interfaces。
 
-Plans are living documents — update Progress / Surprises / Decision Log / Outcomes as work proceeds. Completed plans move to `docs/plans/archive/YYYY-MM-DD-<slug>/` after Verify / Adopt. The lifecycle audit warns when a plan's Progress is complete but it lingers in the active directory. Full schema + adoption rules: [ADR 0008](decisions/0008-plan-persistence.md).
+plan は living document として、作業中に Progress / Surprises / Decision Log / Outcomes を更新し続ける。完了後 (Verify / Adopt 後) は `docs/plans/archive/YYYY-MM-DD-<slug>/` へ移動する。Progress 完了後も active ディレクトリに残った plan は lifecycle audit が WARN を出す。schema と採用ルールの詳細は [ADR 0008](decisions/0008-plan-persistence.md)。
 
-## Improvement Capture loop
+## Improvement Capture ループ
 
-Every plan has an `Improvement Candidates` section. Learnings during execution are recorded with `Recommended adoption target` (`current-plan` / `durable-doc` / `adr` / `template` / `audit` / `harness` / `test` / `deferred` / `rejected`) and `Disposition` (`open` / `adopted` / `deferred` / `rejected` / `superseded`). Cross-cutting or destructive adoption goes through Propose → Confirm → Execute. Detail: [`self-operation.md`](self-operation.md) and [`ai-first-lifecycle.md`](ai-first-lifecycle.md).
+各 plan は `Improvement Candidates` section を持つ。実行中の学びは `Recommended adoption target` (`current-plan` / `durable-doc` / `adr` / `template` / `audit` / `harness` / `test` / `deferred` / `rejected`) と `Disposition` (`open` / `adopted` / `deferred` / `rejected` / `superseded`) を付けて記録する。横断的または破壊的な adopt は Propose → Confirm → Execute を通す。詳細は [`self-operation.md`](self-operation.md) と [`ai-first-lifecycle.md`](ai-first-lifecycle.md)。
 
-## Quick CLI reference, grouped by intent
+## CLI クイックリファレンス (目的別)
 
-For the authoritative full list with all flags, see [`AGENTS.md`](../AGENTS.md) Subcommands or [`README.md`](../README.md) CLI table.
+flag 全部入りの正本リストは [`AGENTS.md`](../AGENTS.md) の Subcommands、または [`README.md`](../README.md) の CLI 表を参照。
 
-**Setting up**
-- `ai-ops new <name> --purpose "..."` — new project Brief
-- `ai-ops migrate <path>` — bring an existing project under ai-ops
-- `ai-ops bootstrap` / `ai-ops update` — install / update tier-1/2 tools
+**セットアップ**
+- `ai-ops new <name> --purpose "..."` — 新規プロジェクトの Brief
+- `ai-ops migrate <path>` — 既存プロジェクトを ai-ops 配下に取り込み
+- `ai-ops bootstrap` / `ai-ops update` — tier 1/2 ツールの install / 更新
 
-**Auditing**
-- `ai-ops audit projects` — survey all ghq-tracked projects (priority + sub-flow per project)
-- `ai-ops audit harness` — drift between `.ai-ops/harness.toml` and actual files
-- `ai-ops audit nix` — Nix adoption gap
-- `ai-ops audit security` — secret-name file scan
-- `ai-ops audit lifecycle` — ai-ops self-audit
-- `ai-ops check` — all of the above + pytest
+**監査**
+- `ai-ops audit projects` — ghq 管理下の全プロジェクトを一括監査 (priority + sub-flow を出力)
+- `ai-ops audit harness` — `.ai-ops/harness.toml` と実ファイルの drift
+- `ai-ops audit nix` — Nix 採用 gap
+- `ai-ops audit security` — secret 名称スキャン
+- `ai-ops audit lifecycle` — ai-ops 自身の self-audit
+- `ai-ops check` — 上記すべて + pytest
 
-**Working in parallel (ADR 0010)**
-- `ai-ops worktree-new <slug>` — create branch + worktree + plan skeleton
-- `ai-ops worktree-cleanup` — remove worktrees with merged PR + archived plan
+**並行作業 (ADR 0010)**
+- `ai-ops worktree-new <slug>` — branch + worktree + plan skeleton を作成
+- `ai-ops worktree-cleanup` — PR merged + plan archived の worktree を削除
 
-**Propagating ai-ops improvements (ADR 0011)**
-- `ai-ops propagate-anchor` — bump `ai_ops_sha` in managed projects
-- `ai-ops propagate-init` — commit untracked manifests
-- `ai-ops propagate-files` — refresh `[harness_files]` hashes
-- All accept `--auto-yes` for CI / scheduled execution
+**ai-ops 改善の伝播 (ADR 0011)**
+- `ai-ops propagate-anchor` — 管理対象プロジェクトの `ai_ops_sha` を bump
+- `ai-ops propagate-init` — 未追跡 manifest を commit
+- `ai-ops propagate-files` — `[harness_files]` ハッシュを refresh
+- すべて CI / スケジュール実行向けに `--auto-yes` を受け付ける
 
-**GitHub-native ecosystem setup (ADR 0011)**
-- `ai-ops setup-ci-workflow --project PATH` — PR adding the drift-check workflow
-- `ai-ops setup-codeowners --project PATH` — PR adding CODEOWNERS routing
-- `ai-ops setup-ruleset --project PATH --tier {A,B,C}` — apply Repository Ruleset
-- `ai-ops report-drift` — translate audit output into Issue / sub-issue lifecycle (called by ecosystem-watch workflow)
+**GitHub-native エコシステム setup (ADR 0011)**
+- `ai-ops setup-ci-workflow --project PATH` — drift-check workflow を追加する PR
+- `ai-ops setup-codeowners --project PATH` — CODEOWNERS routing を追加する PR
+- `ai-ops setup-ruleset --project PATH --tier {A,B,C}` — Repository Ruleset を適用
+- `ai-ops report-drift` — 監査結果を Issue / sub-issue ライフサイクルに翻訳 (ecosystem-watch workflow から呼ばれる)
 
-## Where to read next
+## さらに読む
 
-By topic:
+トピック別:
 
-- **AI agent contract & cross-cutting policy** → [`AGENTS.md`](../AGENTS.md)
-- **Lifecycle deep-dive** → [`ai-first-lifecycle.md`](ai-first-lifecycle.md)
-- **Multi-project audit playbook** → [`projects-audit.md`](projects-audit.md)
-- **Fixing drift** → [`realignment.md`](realignment.md)
-- **Physical relocation (`~/work/...` → `~/ghq/...`)** → [`project-relocation.md`](project-relocation.md)
-- **ai-ops self-operation** → [`self-operation.md`](self-operation.md)
+- **AI エージェント契約と横断ポリシー** → [`AGENTS.md`](../AGENTS.md)
+- **ライフサイクル deep-dive** → [`ai-first-lifecycle.md`](ai-first-lifecycle.md)
+- **マルチプロジェクト監査 playbook** → [`projects-audit.md`](projects-audit.md)
+- **drift 修正** → [`realignment.md`](realignment.md)
+- **物理的な relocation (`~/work/...` → `~/ghq/...`)** → [`project-relocation.md`](project-relocation.md)
+- **ai-ops 自身の運用** → [`self-operation.md`](self-operation.md)
 
-By design rationale (ADRs):
+設計判断 (ADR) 別:
 
 - [0001 AGENTS.md primary](decisions/0001-agents-md-as-primary.md)
 - [0002 Portability first](decisions/0002-portability-first.md)

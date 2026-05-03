@@ -413,6 +413,75 @@ def test_outcomes_filled_recognises_substantive_content(tmp_path: Path) -> None:
     assert _outcomes_filled(text) is True
 
 
+def test_docs_language_policy_passes_for_japanese_doc(tmp_path: Path) -> None:
+    """日本語比率が閾値以上なら違反なし。"""
+    from ai_ops.audit.lifecycle import _check_docs_language_policy
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "japanese.md").write_text(
+        "# 日本語ドキュメント\n\nこれは十分な日本語が含まれている文書です。"
+        "コードブロックや英語のキーワードが混じっていても問題ありません。\n",
+        encoding="utf-8",
+    )
+    assert _check_docs_language_policy(tmp_path) == []
+
+
+def test_docs_language_policy_fails_for_english_only_doc(tmp_path: Path) -> None:
+    """純英語の docs/*.md は違反として検出される。"""
+    from ai_ops.audit.lifecycle import _check_docs_language_policy
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "english.md").write_text(
+        "# English Doc\n\nThis is entirely English text without any Japanese.\n",
+        encoding="utf-8",
+    )
+    failures = _check_docs_language_policy(tmp_path)
+    assert len(failures) == 1
+    assert "english.md" in failures[0]
+    assert "japanese-char ratio" in failures[0]
+
+
+def test_docs_language_policy_exempts_readme(tmp_path: Path) -> None:
+    """README* は英語デフォルトなので除外される。"""
+    from ai_ops.audit.lifecycle import _check_docs_language_policy
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "README.md").write_text("English README is OK.\n", encoding="utf-8")
+    (docs / "README.ja.md").write_text("日本語 README も OK\n", encoding="utf-8")
+    assert _check_docs_language_policy(tmp_path) == []
+
+
+def test_docs_language_policy_skips_subdirectories(tmp_path: Path) -> None:
+    """docs/decisions/ や docs/plans/ のサブディレクトリは対象外。"""
+    from ai_ops.audit.lifecycle import _check_docs_language_policy
+
+    decisions = tmp_path / "docs" / "decisions"
+    decisions.mkdir(parents=True)
+    (decisions / "0001-foo.md").write_text(
+        "# ADR 0001: Foo\n\nADRs are conventionally written in English.\n",
+        encoding="utf-8",
+    )
+    plans = tmp_path / "docs" / "plans" / "active-slug"
+    plans.mkdir(parents=True)
+    (plans / "plan.md").write_text(
+        "# Plan\n\nThis active plan happens to be English at the moment.\n",
+        encoding="utf-8",
+    )
+    assert _check_docs_language_policy(tmp_path) == []
+
+
+def test_docs_language_policy_real_repo_passes() -> None:
+    """ai-ops 自身の docs/ が現状ポリシーに通ること (回帰テスト)。"""
+    from ai_ops.audit.lifecycle import _check_docs_language_policy
+
+    repo = Path(__file__).resolve().parents[1]
+    failures = _check_docs_language_policy(repo)
+    assert failures == [], f"language policy violations: {failures}"
+
+
 def test_count_pending_propagation_prs_returns_minus_one_without_gh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
