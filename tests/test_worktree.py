@@ -197,6 +197,60 @@ def test_cleanup_worktree_removes_worktree_and_branch(tmp_path: Path) -> None:
     assert branch not in branches
 
 
+def test_read_tier_returns_value_when_manifest_present(tmp_path: Path) -> None:
+    from ai_ops.worktree import _read_tier
+
+    repo = tmp_path / "r"
+    (repo / ".ai-ops").mkdir(parents=True)
+    (repo / ".ai-ops" / "harness.toml").write_text(
+        'ai_ops_sha = "abc"\nworkflow_tier = "B"\n', encoding="utf-8",
+    )
+    assert _read_tier(repo) == "B"
+
+
+def test_read_tier_returns_none_without_manifest(tmp_path: Path) -> None:
+    from ai_ops.worktree import _read_tier
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    assert _read_tier(repo) is None
+
+
+def test_auto_archive_skipped_for_tier_b(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tier B/C プロジェクトでは自動 archive を回避し PR 経路を案内する。"""
+    from ai_ops.worktree import auto_archive_plan
+
+    repo = tmp_path / "r"
+    (repo / ".ai-ops").mkdir(parents=True)
+    (repo / ".ai-ops" / "harness.toml").write_text(
+        'workflow_tier = "B"\n', encoding="utf-8",
+    )
+    (repo / "docs" / "plans" / "x").mkdir(parents=True)
+    (repo / "docs" / "plans" / "x" / "plan.md").write_text("plan", encoding="utf-8")
+
+    ok, msg = auto_archive_plan("x", repo, dry_run=True)
+    assert ok is False
+    assert "Tier B" in msg
+    assert "PR" in msg
+
+
+def test_auto_archive_dry_run_skips_git_for_tier_a(tmp_path: Path) -> None:
+    """Tier A / unmanaged は実際に git mv するが、dry-run なら touch しない。"""
+    from ai_ops.worktree import auto_archive_plan
+
+    repo = tmp_path / "r"
+    (repo / "docs" / "plans" / "x").mkdir(parents=True)
+    (repo / "docs" / "plans" / "x" / "plan.md").write_text("plan", encoding="utf-8")
+
+    ok, msg = auto_archive_plan("x", repo, dry_run=True)
+    assert ok is True
+    assert "[dry-run]" in msg
+    # active plan は dry-run では動かない
+    assert (repo / "docs" / "plans" / "x" / "plan.md").exists()
+
+
 def test_list_worktrees_returns_main_plus_created(tmp_path: Path) -> None:
     """After creating one worktree, `list_worktrees` returns 2 entries."""
     from ai_ops.worktree import (

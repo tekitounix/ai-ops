@@ -58,6 +58,18 @@ Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Ve
 
 これら以外 (branch 命名、worktree 作成、plan 更新、PR 起票、archive、cleanup、伝播) は AI エージェントまたは scheduled cron が自律実行する。
 
+### secret 扱いの 5 原則 (ADR 0004)
+
+AI エージェントは秘匿情報を扱う場面で次を守る。詳細と禁止リストは [ADR 0004](decisions/0004-secrets-management.md)。
+
+1. secret 値を含む外部コマンド (`bw`, `gh secret`, `op` 等) の output は **subprocess 内で消費**、stdout / チャットに流さない。
+2. session token / API key 値が必要なときは shell 内手順 (例: `export BW_SESSION=$(bw unlock --raw)`) を案内し、**値そのものをチャットで受け取らない**。
+3. 使用者の Confirm を `echo y` で bypass せず、正規 `--yes` flag を要求する。
+4. secret 関連操作後は「rotation 推奨かどうか」を露出の有無 + threat model から判断して明示する。
+5. 不正確な報告 (「unset した」「クリアした」) を避け、消えた範囲と残る範囲を分けて伝える。
+
+`audit security` の `SECRET_ARG_FORBIDDEN_PATTERNS` が違反を機械検出して FAIL を返す。規律 + 監査の二重で守る。
+
 ## 5 つの戦略
 
 ai-ops は Git / ghq / GitHub / Nix / plan を「使うことが前提」として全体を組み立てる。各戦略の深い背景は [`decisions/INDEX.md`](decisions/INDEX.md) を参照。

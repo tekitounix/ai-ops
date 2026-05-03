@@ -398,6 +398,7 @@ def run_install(
     tier_max: int = 1,
     dry_run: bool = False,
     os_override: str | None = None,
+    yes: bool = False,
 ) -> int:
     """Install missing tools at or below tier_max.
 
@@ -433,7 +434,9 @@ def run_install(
             print("\nNo tools can be auto-installed; resolve the manual entries above.")
         return 1 if manual_tier1_present else 0
 
-    if not _confirm("\nProceed to install the auto-installable tools above?", dry_run=dry_run):
+    if not yes and not _confirm(
+        "\nProceed to install the auto-installable tools above?", dry_run=dry_run
+    ):
         print("Skipped (no install performed).")
         return 1 if any(t.tier == 1 for t, _, _ in missing) else 0
 
@@ -560,11 +563,17 @@ def _bw_get_field(item_name: str, field: str = "api_key") -> str | None:
 
 
 def _gh_secret_set(repo: str, key: str, value: str, dry_run: bool) -> bool:
+    """secret 値を stdin 経由で `gh secret set` に渡す (ADR 0004)。
+
+    `--body <value>` の引数渡しは process list (`ps auxww`) に値が瞬間的に出るため
+    禁止 (FORBIDDEN_SECRET_PATTERNS で audit 検出)。stdin なら memory のみ。
+    """
     if dry_run:
         print(f"  [dry-run] would set secret {key} on {repo}")
         return True
     result = subprocess.run(
-        ["gh", "secret", "set", key, "--body", value, "--repo", repo],
+        ["gh", "secret", "set", key, "--body-file", "-", "--repo", repo],
+        input=value,
         capture_output=True, text=True, check=False, timeout=20,
     )
     if result.returncode != 0:
@@ -580,6 +589,7 @@ def run_install_secrets(
     openai_item: str | None = None,
     bw_field: str = "api_key",
     dry_run: bool = False,
+    yes: bool = False,
 ) -> int:
     """Bitwarden 経由で取得した API key を `gh secret set` で repo に登録する。
 
@@ -619,7 +629,7 @@ def run_install_secrets(
     print(f"==> Will register {len(targets)} secret(s) on {repo}:")
     for key, item in targets:
         print(f"  - {key} (from Bitwarden item: {item})")
-    if not _confirm("\nProceed?", dry_run=dry_run):
+    if not yes and not _confirm("\nProceed?", dry_run=dry_run):
         print("Skipped.")
         return 0
 

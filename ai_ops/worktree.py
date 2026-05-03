@@ -238,6 +238,107 @@ def create_worktree_with_plan(
     return worktree_path, plan_md, branch
 
 
+def _read_tier(repo_root_path: Path) -> str | None:
+    """`.ai-ops/harness.toml` から `workflow_tier` を読む。manifest が無ければ None。
+
+    ai-ops 自身は manifest を持たないので None (Tier A 相当として扱う)。
+    """
+    manifest = repo_root_path / ".ai-ops" / "harness.toml"
+    if not manifest.is_file():
+        return None
+    try:
+        text = manifest.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+    import re
+    match = re.search(r'^\s*workflow_tier\s*=\s*"([ABCD])"', text, flags=re.MULTILINE)
+    if match:
+        return match.group(1)
+    return None
+
+
+def find_archive_pending_worktrees(
+    repo_root_path: Path,
+) -> list[tuple[WorktreeInfo, str]]:
+    """「PR merged だが plan は active のまま」の worktree を返す。
+
+    `find_cleanable_worktrees` の前段。auto-archive で対応する候補。
+    """
+    out: list[tuple[WorktreeInfo, str]] = []
+    for wt in list_worktrees(repo_root_path):
+        if wt.is_main:
+            continue
+        branch = wt.branch.replace("refs/heads/", "", 1)
+        if "/" not in branch:
+            continue
+        branch_type, _, slug = branch.partition("/")
+        if branch_type not in VALID_BRANCH_TYPES:
+            continue
+        if _is_plan_archived(repo_root_path, slug):
+            continue  # 既に archive 済みなら対象外
+        active = _plan_dir_for_slug(repo_root_path, slug)
+        if not active.is_dir():
+            continue  # 元から plan が無いなら対象外
+        merged = _branch_is_merged_pr(repo_root_path, branch)
+        if merged is not True:
+            continue
+        out.append((wt, slug))
+    return out
+
+
+def auto_archive_plan(
+    slug: str,
+    repo_root_path: Path,
+    *,
+    dry_run: bool = False,
+) -> tuple[bool, str]:
+    """active plan を archive ディレクトリへ移し、commit + push する (Tier A 限定)。
+
+    Tier B/C / 不明 (unmanaged 以外で declared) なら、自動 archive を回避し
+    使用者に PR 経路を案内する。Returns (success, message)。
+    """
+    tier = _read_tier(repo_root_path)
+    if tier in ("B", "C"):
+        return False, (
+            f"Tier {tier}: archive must go through a PR. "
+            f"Run `git mv docs/plans/{slug} docs/plans/archive/<date>-{slug}` "
+            f"and open an archive PR manually."
+        )
+    # Tier A / D / unmanaged (None) は直接 push を許容
+    from datetime import datetime, timezone
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    src = _plan_dir_for_slug(repo_root_path, slug)
+    if not src.is_dir():
+        return False, f"plan dir not found: {src}"
+    dst_parent = repo_root_path / "docs" / "plans" / "archive"
+    dst = dst_parent / f"{date}-{slug}"
+    if dry_run:
+        return True, f"[dry-run] would archive {src.relative_to(repo_root_path)} → {dst.relative_to(repo_root_path)}"
+    if dst.exists():
+        return False, f"archive destination already exists: {dst}"
+    dst_parent.mkdir(parents=True, exist_ok=True)
+    mv = subprocess.run(
+        ["git", "-C", str(repo_root_path), "mv", str(src), str(dst)],
+        capture_output=True, text=True, check=False, timeout=15,
+    )
+    if mv.returncode != 0:
+        return False, f"git mv failed: {mv.stderr.strip()}"
+    commit = subprocess.run(
+        ["git", "-C", str(repo_root_path), "commit", "-m",
+         f"chore(plans): archive {slug} plan"],
+        capture_output=True, text=True, check=False, timeout=15,
+    )
+    if commit.returncode != 0:
+        return False, f"git commit failed: {commit.stderr.strip()}"
+    push = subprocess.run(
+        ["git", "-C", str(repo_root_path), "push"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+    if push.returncode != 0:
+        return False, f"git push failed: {push.stderr.strip()}"
+    return True, f"archived {slug} → {dst.relative_to(repo_root_path)} (Tier A: direct push)"
+
+
 def cleanup_worktree(
     info: WorktreeInfo, repo_root_path: Path, *, dry_run: bool = False,
 ) -> tuple[bool, str]:
@@ -309,12 +410,22 @@ def run_worktree_cleanup(
     *,
     auto: bool,
     dry_run: bool,
+    auto_archive: bool = False,
     cwd: Path | None = None,
 ) -> int:
     root = cwd or repo_root() or Path.cwd().resolve()
     if not (root / ".git").exists():
         print(f"Error: not a git repository: {root}", file=sys.stderr)
         return 1
+
+    # PR β: --auto-archive は「PR merged だが plan が未 archive」の worktree について
+    # 先に auto_archive_plan を試みる (Tier A のみ直 push、B/C は警告のみ)。
+    if auto_archive:
+        pending = find_archive_pending_worktrees(root)
+        for wt, slug in pending:
+            ok, msg = auto_archive_plan(slug, root, dry_run=dry_run)
+            prefix = "OK" if ok else "SKIP"
+            print(f"[{slug}] auto-archive {prefix}: {msg}")
 
     candidates = find_cleanable_worktrees(root)
     if not candidates:

@@ -764,6 +764,39 @@ def test_security_audit_detects_private_key_header(tmp_path: Path) -> None:
     assert run_security_audit(tmp_path) == 1
 
 
+def test_security_audit_detects_forbidden_secret_arg_pattern(tmp_path: Path) -> None:
+    """ai_ops/ 配下で `--body <secret>` 等の禁止 pattern を FAIL 検出する。"""
+    ai = tmp_path / "ai_ops"
+    ai.mkdir()
+    (ai / "leaky.py").write_text(
+        'subprocess.run(["gh", "secret", "set", k, "--body", value, "--repo", r])\n',
+        encoding="utf-8",
+    )
+    assert run_security_audit(tmp_path) == 1
+
+
+def test_security_audit_passes_when_secret_uses_stdin(tmp_path: Path) -> None:
+    """`--body-file -` + stdin 経由なら検出されない。"""
+    ai = tmp_path / "ai_ops"
+    ai.mkdir()
+    (ai / "safe.py").write_text(
+        'subprocess.run(["gh", "secret", "set", k, "--body-file", "-", "--repo", r], input=value)\n',
+        encoding="utf-8",
+    )
+    assert run_security_audit(tmp_path) == 0
+
+
+def test_security_audit_skips_tests_directory_for_arg_patterns(tmp_path: Path) -> None:
+    """tests/ 配下は scan 対象外 (test fixture / mock を含むため)。"""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_x.py").write_text(
+        'subprocess.run(["gh", "secret", "set", k, "--body", value])\n',
+        encoding="utf-8",
+    )
+    assert run_security_audit(tmp_path) == 0
+
+
 def test_security_audit_skips_only_tests_fixtures_directory(tmp_path: Path) -> None:
     fixtures_dir = tmp_path / "tests" / "fixtures"
     fixtures_dir.mkdir(parents=True)
