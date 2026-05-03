@@ -51,6 +51,14 @@ Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Ve
 
 `ai-ops worktree-new <slug>` で 3 点セットを一気に作成し、canonical テンプレートから plan の skeleton を seed する。`ai-ops worktree-cleanup` は「PR がマージ済み AND plan が archive 済み」の両方が成立した worktree のみ削除する (安全のため両信号必須)。実用上の上限は 1 repo あたり 3〜5 worktree。詳しい規約は [ADR 0010](decisions/0010-worktree-workflow.md)。
 
+### マージ後の手順 (必ず順番通りに)
+
+1. PR をマージする (`gh pr merge <N> --squash`)。リポジトリ設定 `Automatically delete head branches` が有効ならリモートブランチは自動削除される。
+2. プライマリ worktree (`main`) で `git pull --ff-only` してマージ結果を取り込む。
+3. `git fetch --prune origin && git ls-remote --heads origin` でリモートブランチが消えていることを確認する。残っていたら `git push origin --delete <branch>` で除去 (`gh pr merge --delete-branch` のフラグだけでは取りこぼす実例があるため、リポジトリ設定 + 確認の二重化が必要)。
+4. plan を archive する: `git mv docs/plans/<slug> docs/plans/archive/YYYY-MM-DD-<slug>` → `git commit -m "chore(plans): archive <slug> plan"` → push。Tier A (ai-ops 自身) は直接 `main` に push し、Tier B / C は archive 用に PR を 1 つ立ててマージする。
+5. `ai-ops worktree-cleanup` (任意で `--auto`) で worktree を削除する。CLI は「PR merged + plan archived」の両方を信号として要求するので、ステップ 4 を飛ばすと cleanup 対象にならない。
+
 ## GitHub-native エコシステム運用 (ADR 0011)
 
 ai-ops の主たる使用者向け表面は、ローカル CLI ではなく **GitHub Issues + sub-issues + Projects v2 ボード + scheduled Actions + Repository Rulesets + CODEOWNERS** である。drift 状況や伝播作業は使用者の既存の GitHub Notifications に乗る。
