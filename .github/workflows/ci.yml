@@ -67,13 +67,15 @@ jobs:
       - name: nix build checks / current runner
         run: nix build --no-link ".#checks.${{ matrix.system }}.all"
 
-  # ai-ops 自身を ai-ops review-pr で dogfood する (PR α 以降)。
-  # ai-ops は Tier A (trunk-based) 想定なので、結果は Comment + status check
-  # として表示するが、status check の失敗で merge を止めない (continue-on-error)。
-  # ANTHROPIC_API_KEY または OPENAI_API_KEY が secrets に登録されていない場合は
-  # neutral を返して exit 0 (CI を壊さない、設計通り)。
+  # ai-ops 自身を ai-ops review-pr で dogfood する。
+  # PR ζ で 3 層構造に再設計: Tier A は label trigger (default off)、Tier B+ は default on。
+  # ai-ops 自身は Tier A 相当なので、PR に label `review:request` をつけたときだけ実走。
+  # self-review が常に走る前提で、external は「セカンドオピニオン要」とエージェントが
+  # 判断したときだけ呼ぶ運用。
   review:
-    if: github.event_name == 'pull_request'
+    if: |
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'review:request')
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:

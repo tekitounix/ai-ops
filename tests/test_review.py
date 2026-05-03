@@ -84,7 +84,7 @@ def test_review_uses_anthropic_when_key_set(monkeypatch: pytest.MonkeyPatch) -> 
     # Nix sandbox では Path.home() = /homeless-shelter で書き込めないので
     # cost cache の append と budget read を mock で無効化する。
     monkeypatch.setattr(review, "_append_cost_entry", lambda *a, **kw: None)
-    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
+    monkeypatch.setattr(review, "_load_review_config", lambda cwd: review.ReviewConfig())
     called: dict[str, Any] = {}
 
     def fake_anthropic(model, system, user, key):
@@ -119,7 +119,7 @@ def test_review_falls_back_to_openai_when_only_openai_key(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "key-o")
     monkeypatch.setattr(review, "_append_cost_entry", lambda *a, **kw: None)
-    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
+    monkeypatch.setattr(review, "_load_review_config", lambda cwd: review.ReviewConfig())
     called: dict[str, Any] = {}
 
     def fake_openai(model, system, user, key):
@@ -240,7 +240,7 @@ def test_run_review_pr_dry_run_does_not_post(
         agents_md="A", adrs={}, harness_toml=None, plan_md=None,
     )
     monkeypatch.setattr(review, "gather_context", lambda repo, pr: fake_ctx)
-    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None: review.ReviewResult(
+    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None, model_override=None, pr_labels=None: review.ReviewResult(
         state="success", summary="ok", body="### Review body",
     ))
 
@@ -276,7 +276,7 @@ def test_run_review_pr_posts_comment_and_status(
         agents_md="A", adrs={}, harness_toml=None, plan_md=None,
     )
     monkeypatch.setattr(review, "gather_context", lambda repo, pr: fake_ctx)
-    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None: review.ReviewResult(
+    monkeypatch.setattr(review, "review_with_llm", lambda ctx, provider="auto", cwd=None, model_override=None, pr_labels=None: review.ReviewResult(
         state="failure", summary="bad", body="# Issues",
     ))
 
@@ -365,7 +365,7 @@ def test_review_skipped_when_budget_exceeded(
     """`monthly_usd_limit` を超えていたら LLM を呼ばずに neutral skip。"""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: 1.00)
+    monkeypatch.setattr(review, "_load_review_config", lambda cwd: review.ReviewConfig(monthly_usd_limit=1.00))
     monkeypatch.setattr(review, "_read_monthly_total_usd", lambda month=None: 1.50)
 
     def boom_anthropic(*a, **kw):
@@ -388,7 +388,7 @@ def test_review_records_cost_to_cache(
     """LLM 呼び出し後に月次キャッシュへ追記される。"""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(review, "_read_monthly_budget_usd", lambda cwd: None)
+    monkeypatch.setattr(review, "_load_review_config", lambda cwd: review.ReviewConfig())
 
     appended: list[dict] = []
 
@@ -442,3 +442,143 @@ def test_read_monthly_budget_env_overrides_toml(
 
 def test_read_monthly_budget_returns_none_without_config(tmp_path: Path) -> None:
     assert review._read_monthly_budget_usd(tmp_path) is None
+
+
+# ---------- PR ζ: ReviewConfig + skip + model auto ----------
+
+
+def test_review_config_disabled_skips(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review]\nenabled = false\n', encoding="utf-8",
+    )
+    monkeypatch.setattr(review, "_call_anthropic",
+                        lambda *a, **kw: pytest.fail("must not be called"))
+    ctx = review.PRContext(
+        repo="o/r", number=1, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff="",
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    result = review.review_with_llm(ctx, provider="auto", cwd=tmp_path)
+    assert result.state == "neutral"
+    assert "disabled" in result.summary.lower()
+
+
+def test_review_skip_label_triggers_neutral(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review]\nenabled = true\nskip_label_patterns = ["no-review"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(review, "_call_anthropic",
+                        lambda *a, **kw: pytest.fail("must not be called"))
+    ctx = review.PRContext(
+        repo="o/r", number=1, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff="",
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    result = review.review_with_llm(
+        ctx, provider="auto", cwd=tmp_path,
+        pr_labels=["enhancement", "no-review"],
+    )
+    assert result.state == "neutral"
+    assert "no-review" in result.summary
+
+
+def test_review_skip_path_patterns_when_all_match(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review]\nenabled = true\nskip_path_patterns = ["**/*.lock"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(review, "_call_anthropic",
+                        lambda *a, **kw: pytest.fail("must not be called"))
+    diff = "+++ b/flake.lock\n+ change\n+++ b/poetry.lock\n+ change\n"
+    ctx = review.PRContext(
+        repo="o/r", number=1, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff=diff,
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    result = review.review_with_llm(ctx, provider="auto", cwd=tmp_path)
+    assert result.state == "neutral"
+    assert "skip_path_patterns" in result.summary
+
+
+def test_review_path_partial_match_does_not_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review]\nenabled = true\nskip_path_patterns = ["**/*.lock"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(review, "_append_cost_entry", lambda *a, **kw: None)
+    monkeypatch.setattr(review, "_call_anthropic",
+                        lambda *a, **kw: (
+                            json.dumps({"state": "success", "summary": "ok", "body": "ok"}),
+                            100, 10,
+                        ))
+    diff = "+++ b/flake.lock\n+ change\n+++ b/main.py\n+ change\n"
+    ctx = review.PRContext(
+        repo="o/r", number=1, head_sha="abc", base_ref="main",
+        title="t", body="b", author="a", diff=diff,
+        agents_md="A", adrs={}, harness_toml=None, plan_md=None,
+    )
+    result = review.review_with_llm(ctx, provider="auto", cwd=tmp_path)
+    assert result.state == "success"
+
+
+def test_choose_model_auto_for_security_label() -> None:
+    cfg = review.ReviewConfig()
+    assert review._choose_model_auto(["security"], 100, cfg) == "claude-opus-4-7"
+
+
+def test_choose_model_auto_for_docs_label_small_diff() -> None:
+    cfg = review.ReviewConfig()
+    assert review._choose_model_auto(["docs"], 50, cfg) == "claude-haiku-4-5-20251001"
+
+
+def test_choose_model_auto_default_when_no_signal() -> None:
+    cfg = review.ReviewConfig(default_model="claude-sonnet-4-6")
+    assert review._choose_model_auto(["enhancement"], 1000, cfg) == "claude-sonnet-4-6"
+
+
+def test_load_review_config_reads_full_block(tmp_path: Path) -> None:
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review]\n'
+        'enabled = true\n'
+        'monthly_usd_limit = 3.5\n'
+        'per_pr_usd_limit = 0.20\n'
+        'default_model = "claude-haiku-4-5-20251001"\n'
+        'skip_label_patterns = ["a", "b"]\n'
+        'skip_path_patterns = ["**/*.md"]\n'
+        'on_label = "review:request"\n',
+        encoding="utf-8",
+    )
+    cfg = review._load_review_config(tmp_path)
+    assert cfg.enabled is True
+    assert cfg.monthly_usd_limit == 3.5
+    assert cfg.per_pr_usd_limit == 0.20
+    assert cfg.default_model == "claude-haiku-4-5-20251001"
+    assert cfg.skip_label_patterns == ("a", "b")
+    assert cfg.skip_path_patterns == ("**/*.md",)
+    assert cfg.on_label == "review:request"
+
+
+def test_load_review_config_falls_back_to_legacy_review_budget(tmp_path: Path) -> None:
+    (tmp_path / ".ai-ops").mkdir()
+    (tmp_path / ".ai-ops" / "harness.toml").write_text(
+        '[review_budget]\nmonthly_usd_limit = 1.5\n', encoding="utf-8",
+    )
+    cfg = review._load_review_config(tmp_path)
+    assert cfg.monthly_usd_limit == 1.5
+    assert cfg.enabled is True
