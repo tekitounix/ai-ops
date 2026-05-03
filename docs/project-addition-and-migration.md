@@ -37,37 +37,11 @@ Nix flake を default-required reproducibility layer とする。AI agent が pe
 
 ### Rubric
 
-#### Stage A: Hard gates (early exit)
+Stage A / B / C による採用判定の正本表は [ADR 0005 §Per-project rubric](decisions/0005-nix-optional-reproducibility-layer.md) を参照。本 playbook では決定経路の概念だけ示す:
 
-| 条件 | signal | 結果 |
-|---|---|---|
-| archive | last commit > 18mo, no PR | none |
-| scratch | `~/scratch/`, no remote, < 5 file | none |
-| docs-only | 全 tracked が markdown/pdf | none / minimal |
-| existing flake | `flake.nix` あり | preserve / amend |
-| vendor too closed | GUI installer / license dongle | devshell with vendor outside closure |
-| upstream fork | non-user org remote, mostly upstream commits | none |
-
-#### Stage B: Stack-aware default
-
-| Stack signal | Level | Template |
-|---|---|---|
-| `xmake.lua` | devshell | `flake.nix.xmake` |
-| `CMakeLists.txt` | devshell | `flake.nix.minimal` (cmake/ninja/clang を tools に追加) |
-| 商用 SDK / vendor binary | devshell + overlay | `flake.nix.xmake` 派生 |
-| `package.json` / `pnpm-lock.yaml` | devshell | `flake.nix.node` |
-| `pyproject.toml` / `uv.lock` | devshell | `flake.nix.python` |
-| `Cargo.toml` | devshell | `flake.nix.minimal` (cargo/rustc を tools に追加) |
-| `go.mod` | devshell | `flake.nix.minimal` (go を tools に追加) |
-| DSL (`*.ato` 等) | devshell minimal | `flake.nix.minimal` |
-
-#### Stage C: Score adjustment
-
-Pros (+1〜+3): toolchain volatility / multi-developer / CI imperative steps / long-term maintenance / external contributor / release artifact / vendor binary / AI session 高頻度 / sandbox 需要 / tests / activity / LOC > 500
-
-Cons (−1〜−5): dormant / scratch / docs-only / throwaway / system-tool only / vendor too closed / tiny project / single binary / strong existing repro layer / stale-not-archive / many top-level memo files
-
-Score ≥ +6 で promote、+2〜+5 で keep、0〜+1 で borderline (brief で flag)、< 0 で demote to none (justification 必須)。
+- **Stage A** が hard gate (archive / scratch / docs-only / existing flake / vendor too closed / upstream fork で early exit)
+- **Stage B** が stack signal (xmake / cmake / package.json / pyproject.toml 等) から default level を決定
+- **Stage C** が score 補正 (Pros / Cons) で promote / keep / borderline / demote を決める
 
 `ai-ops audit nix --report` で全 project の Nix gap 一覧、`ai-ops audit nix --propose <path>` で個別 retrofit 提案。`ai-ops check` は Nix がなくても bootstrap fallback として動くが、stack-bearing project では Nix audit fail = check fail。
 

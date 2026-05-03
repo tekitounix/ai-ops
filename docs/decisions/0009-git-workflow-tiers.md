@@ -130,3 +130,7 @@ Out of scope (deferred):
   best practice. Long-lived branches are a Tier D acceptance, not a
   Tier B norm.
 - `docs/plans/git-workflow-tiers/plan.md`: implementation plan.
+
+## Amendment 2026-05-03 (PR δ)
+
+本 ADR 本文中の `ai-ops propagate-anchor` 等は執筆時点の subcommand 名。PR α (2026-05-03) で `ai-ops propagate --kind {anchor,init,files}` に統合された (旧名は 1 リリース alias)。

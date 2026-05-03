@@ -1,6 +1,6 @@
 # ADR 0007: Python canonical CLI
 
-> Status: Accepted (Amended 2026-04-29)
+> Status: Accepted (Amended 2026-04-29, 2026-05-03)
 > Date: 2026-04-27
 
 ## Context
@@ -128,3 +128,7 @@ CI matrix:
 - ADR 0005: Nix optional reproducibility layer
 - ADR 0006: AI-first project lifecycle
 - `docs/ai-first-lifecycle.md`
+
+## Amendment 2026-05-03 (PR δ)
+
+`audit/` モジュールリスト (Layout block) と user-facing command surface (Command surface block) は、本 ADR 執筆時点 (2026-04-28) のスナップショットで、その後 PR α / β / γ で `audit/{harness,projects,standard}.py` 追加、subcommand 統合 (`propagate --kind` / `worktree {new,cleanup}` / `setup {ci,codeowners,ruleset}`)、`review-pr` / `report-drift` / `bootstrap --with-secrets` / `--with-pre-push-hook` 追加など多数の進化があった。**最新の正本は `ai-ops --help` および `docs/operation.md` の CLI Quick reference を参照**。本 ADR は当初判断の歴史記録として保持する。

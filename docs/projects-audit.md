@@ -33,7 +33,7 @@ python -m ai_ops audit projects --json > /tmp/projects-audit.json
 python -m ai_ops audit projects
 ```
 
-各行は優先度と sub-flow 割当を駆動する 9 信号を持つ。
+各行は優先度と sub-flow 割当を駆動する複数の signal を持つ (正本は `signals_to_dict` の出力 field 集合 = `audit projects --json` で参照)。
 
 | キー | 意味 |
 |---|---|
@@ -46,7 +46,7 @@ python -m ai_ops audit projects
 | `todo` | TODO / FIXME / WIP / TBD のテキスト出現数 (rg ベース。rg が無ければ 0) |
 | `agents_md` | ルートに AGENTS.md が存在 |
 | `policy_drift` | `ok` / `stale` / `diverged` / `ahead-and-behind` / `no-anchor` / `n/a` — 管理対象プロジェクト自身の `templates/plan.md` と active plan を ai-ops canonical schema (`^## ` 見出し集合) と比較。`n/a` = 未管理または ai-ops 自身。`no-anchor` = `harness.toml.ai_ops_sha` が無い。`stale` = canonical に存在する section がプロジェクトに無い。`diverged` = プロジェクトに余分な section がある。`ahead-and-behind` = 両方。AGENTS.md は意図的に対象外 (プロジェクト固有の契約)。 |
-| `pending_propagation_prs` | プロジェクトの GitHub repo で head branch が `ai-ops/` で始まる open PR の数 (`ai-ops propagate-anchor` または `ai-ops propagate-init` が作った PR)。`-1` は `gh` が無く count 不明。`0` は伝播作業が無い状態。監査を安く保つため、polling は管理対象プロジェクトのみ。 |
+| `pending_propagation_prs` | プロジェクトの GitHub repo で head branch が `ai-ops/` で始まる open PR の数 (`ai-ops propagate --kind anchor` 等が作った PR)。`-1` は `gh` が無く count 不明。`0` は伝播作業が無い状態。監査を安く保つため、polling は管理対象プロジェクトのみ。 |
 | `remote_anchor_synced` | `true` / `false` / `null` — `origin/<default-branch>` の `.ai-ops/harness.toml` が `ai_ops_sha == 現 ai-ops HEAD` を持つか。`true` = 伝播完了、`false` = anchor-sync PR が必要、`null` = 判定不能 (`gh` 無し、fetch 失敗、または default branch に manifest 無し)。`true` の時、ローカル `harness_drift` が True でも優先度 P1 に昇格しない (使用者は pull するだけで足りる)。 |
 | `workflow_tier` | `A` / `B` / `C` / `D` — ADR 0009 に従って宣言された workflow tier。`A` = trunk-based ソロ、`B` = 管理 feature-branch + PR、`C` = 本番 / 公開でレビューあり、`D` = ad-hoc スパイク (`harness.toml` に `workflow_tier` 欄が無い場合の default)。 |
 | `tier_violations` | 宣言 tier からの逸脱の人間可読文字列リスト。空リスト = clean。default では安価な検出のみ (long-lived branch、manifest が default branch に無い等)。`INFO:` で始まる文字列は表示するが優先度は上げない (Tier D で「manifest が default branch に無い」notice が INFO 扱いなのは、使用者がその状態を明示的に受け入れたため)。 |

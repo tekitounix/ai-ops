@@ -1,6 +1,6 @@
 name: ai-ops
 # Per-project caller of the ai-ops reusable workflow.
-# Distributed by `ai-ops setup-ci-workflow`.
+# Distributed by `ai-ops setup ci`.
 # Bump `@v1` (or pin a SHA) to control the ai-ops version this project uses.
 
 on:

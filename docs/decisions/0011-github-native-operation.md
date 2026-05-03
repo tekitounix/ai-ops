@@ -133,3 +133,9 @@ Out of scope (deferred):
 - ADR 0010: Worktree-based parallel work
 - `docs/plans/github-native-operation/plan.md`: implementation plan
 - External: GitHub Issues + Sub-issues GA, Projects v2 hierarchy view, Repository Rulesets GA, reusable workflows + composite actions (May 2026 industry survey).
+
+## Amendment 2026-05-03 (PR δ)
+
+本 ADR 本文中の subcommand 例 (`propagate-anchor` / `propagate-init` / `propagate-files` / `setup-ci-workflow` / `setup-codeowners` / `setup-ruleset`) は執筆時点 (2026-05-02) の名称。PR α (2026-05-03) でそれぞれ `propagate --kind {anchor,init,files}` / `setup {ci,codeowners,ruleset}` に統合された (旧名は 1 リリース alias で残存、`audit lifecycle` の README claim verification が両方を verify)。
+
+加えて Move 3 の "later 検討" 案 `ai-ops setup-managed --tier B` (一括 helper) は採用せず、`setup {ci,codeowners,ruleset}` の sub-subparser 統合を選択した。各 component を独立 callable に保つ方が、Tier ごとに適用範囲を分けたいときの柔軟性が高いため。

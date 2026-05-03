@@ -3,13 +3,19 @@
 > Purpose: fresh AI session または別 AI agent に、現在の作業を安全に引き継ぐ。
 > Rule: この handoff は secret や credential を含めない。
 
+## 0. Binding (ADR 0010)
+
+- Plan path: `docs/plans/<slug>/plan.md`
+- Branch: `<type>/<slug>`
+- Worktree: `../<repo-name>.<slug>/` (sibling layout)
+
 ## 1. First Read
 
 Read these files first:
 
 - `AGENTS.md`
-- `docs/ai-first-lifecycle.md`
-- Relevant plan:
+- `docs/operation.md` (master 運用ガイド、AI ワークフロー 14 step + 5 戦略 + 責任分界表)
+- Relevant plan: (path above)
 - Relevant brief:
 
 ## 2. Current Scope

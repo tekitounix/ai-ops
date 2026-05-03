@@ -1,5 +1,5 @@
 # CODEOWNERS for ai-ops-managed projects.
-# Distributed by `ai-ops setup-codeowners`. The `<owner>` placeholder is
+# Distributed by `ai-ops setup codeowners`. The `<owner>` placeholder is
 # replaced with the project owner's GitHub username at install time.
 #
 # Routes ai-ops-related changes to the project owner so propagate-* PRs
