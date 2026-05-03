@@ -428,7 +428,7 @@ def _check_deprecated_alias_in_active_docs(root: Path) -> list[str]:
         for line_no, line in enumerate(text.splitlines(), 1):
             match = DEPRECATED_ALIAS_PATTERN.search(line)
             if match:
-                rel = path.relative_to(root)
+                rel = path.relative_to(root).as_posix()
                 failures.append(
                     f"{rel}:{line_no} uses deprecated alias `ai-ops {match.group(1)}` "
                     f"(use the consolidated subcommand; PR α 統合)"
