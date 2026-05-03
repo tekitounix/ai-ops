@@ -117,3 +117,7 @@ Out of scope (deferred):
 - ADR 0009: Git workflow tiers (this ADR refines the tier-B/C "PR-based" expectation to "trunk-based + short-lived branches + worktree per parallel task").
 - `docs/plans/worktree-workflow/plan.md`: implementation plan.
 - External: industry trend toward trunk-based + worktree-per-AI-session workflow (May 2026 survey).
+
+## Amendment 2026-05-03 (PR δ)
+
+本 ADR 本文中の `ai-ops worktree-new` / `ai-ops worktree-cleanup` は執筆時点の subcommand 名。PR α (2026-05-03) で `ai-ops worktree {new,cleanup}` に統合された (旧名は 1 リリース alias)。さらに PR β で `worktree cleanup --auto-archive` を追加し、Tier A / unmanaged の archive コミット (Lifecycle 4) を 1 コマンドで自動化した。

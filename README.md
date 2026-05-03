@@ -25,7 +25,7 @@ Per github.com/tekitounix/ai-ops, align this project.
 ```text
 Per github.com/tekitounix/ai-ops, audit my projects.
 ```
-**Every ghq-tracked project at once.** The agent walks `ghq list -p`, scores each project on eight signals, and emits a priority-sorted list. Action stays per-project: each P0 / P1 finding routes into the matching sub-flow with its own confirmation. P2 rows are observation only. Full procedure: [`docs/projects-audit.md`](docs/projects-audit.md).
+**Every ghq-tracked project at once.** The agent walks `ghq list -p`, scores each project on a set of drift signals (see `audit projects --json` for the authoritative field set), and emits a priority-sorted list. Action stays per-project: each P0 / P1 finding routes into the matching sub-flow with its own confirmation. P2 rows are observation only. Full procedure: [`docs/projects-audit.md`](docs/projects-audit.md).
 
 If you are already inside an AI session, do not nest a second AI via `--agent claude` / `--agent codex`. Use `--agent prompt-only` or `--dry-run` to print the prompt without invoking another agent.
 
@@ -69,25 +69,21 @@ ai-ops doesn't ship a fixed template, but the prompts above expect a small set o
 | `ai-ops migrate <path>` | Read-only discovery + plan for migrating an existing project |
 | `ai-ops migrate <path> --retrofit-nix` | Narrow scope: add `flake.nix` + `.envrc` only |
 | `ai-ops migrate <path> --update-harness` | Narrow scope: refresh `.ai-ops/harness.toml` |
-| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | Score every ghq-tracked project on 8 signals; priority-sorted table or JSON. Exit 1 on any P0/P1 — usable from cron / CI |
+| `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` | Score every ghq-tracked project on its drift signals; priority-sorted table or JSON. Exit 1 on any P0/P1 — usable from cron / CI |
 | `ai-ops audit nix [--report] [--propose <path>]` | Per-project Nix audit; `--report` walks every project; `--propose` emits a Markdown retrofit plan |
 | `ai-ops audit harness [--path PATH] [--strict]` | Detect drift between `.ai-ops/harness.toml` and actual file hashes |
 | `ai-ops audit standard --since REF` | Detect ADR (`docs/decisions/`) changes since a reference, for propagation |
 | `ai-ops audit security` | Secret scan (works in any repo) |
 | `ai-ops audit lifecycle` | Self-audit for ai-ops itself |
 | `ai-ops check` | All audits + pytest |
-| `ai-ops bootstrap [--tier {1,2}]` | Install missing required tools after confirmation. Default `--tier 1` (required); `--tier 2` adds recommended |
+| `ai-ops bootstrap [--tier {1,2}] [--with-secrets ...] [--with-pre-push-hook --project PATH]` | Install missing required tools after confirmation. Default `--tier 1`; `--tier 2` adds recommended. Optional flags inject GitHub secrets via Bitwarden (ADR 0004) and install the ai-ops pre-push hook |
 | `ai-ops update [--tier {1,2}]` | Update present tools after confirmation. Default `--tier 2` |
 | `ai-ops promote-plan <slug> [--source PATH]` | Promote a local AI plan into `docs/plans/<slug>/plan.md` after confirmation |
-| `ai-ops propagate-anchor (--all \| --project PATH) [--dry-run]` | Open PRs to bump `ai_ops_sha` in managed projects whose only drift is the anchor |
-| `ai-ops propagate-init (--all \| --project PATH) [--dry-run]` | Open PRs to commit `.ai-ops/harness.toml` from local working copy where the manifest exists on disk but is untracked |
-| `ai-ops propagate-files (--all \| --project PATH) [--dry-run]` | Open PRs to refresh `[harness_files]` hashes in `.ai-ops/harness.toml` so they match actual file content on the default branch (no file content is modified) |
-| `ai-ops worktree-new <slug> [--type TYPE]` | Create sibling worktree + branch + plan skeleton (ADR 0010); 1:1:1 binding between slug, branch, worktree |
-| `ai-ops worktree-cleanup [--auto]` | Remove worktrees whose branch's PR is merged AND plan is archived |
+| `ai-ops propagate --kind {anchor,init,files} (--all \| --project PATH) [--dry-run] [--auto-yes]` | Open PRs to propagate ai-ops state to managed projects. `anchor` bumps `ai_ops_sha`; `init` commits an untracked `.ai-ops/harness.toml`; `files` refreshes `[harness_files]` hashes (file contents untouched) |
+| `ai-ops worktree {new,cleanup}` | Manage sibling worktrees (ADR 0010): `new <slug>` creates branch + worktree + plan skeleton with 1:1:1 binding; `cleanup [--auto] [--auto-archive]` removes worktrees whose PR is merged AND plan is archived (auto-archive performs the archive commit for Tier A / unmanaged) |
 | `ai-ops report-drift [--repo OWNER/NAME]` | Translate `audit projects --json` output into ai-ops-repo Issues / sub-issues for the Ecosystem dashboard (ADR 0011) |
-| `ai-ops setup-ci-workflow --project PATH [--tier T]` | PR adding `.github/workflows/ai-ops.yml` (drift gate) to a managed project |
-| `ai-ops setup-codeowners --project PATH [--owner USER]` | PR adding `.github/CODEOWNERS` routing ai-ops changes to project owner |
-| `ai-ops setup-ruleset --project PATH --tier {A,B,C}` | Apply Repository Ruleset (PR + status checks per tier) via `gh api` |
+| `ai-ops setup {ci,codeowners,ruleset}` | Configure ai-ops integration in a managed project (ADR 0011): `ci --project PATH [--tier T]` adds the drift-check workflow; `codeowners --project PATH [--owner USER]` adds CODEOWNERS routing; `ruleset --project PATH --tier {A,B,C}` applies a tier ruleset via `gh api` |
+| `ai-ops review-pr --pr N [--repo OWNER/NAME] [--provider {auto,anthropic,openai}]` | AI-review a PR against ai-ops contracts (ADR 0012); posts a Markdown comment + status check `ai-ops AI Review` |
 
 `new` / `migrate` flags: `--agent {claude,codex,prompt-only,...}`, `--tier {T1,T2,T3}` (T1 public / T2 private / T3 local), `--nix {auto,none,devshell,apps,full}` (default `auto`: AI decides via per-project rubric), `--output <path>`, `--dry-run`, `--interactive`.
 
@@ -136,7 +132,7 @@ docs/
   project-relocation.md       moving from outside `~/ghq/` into `~/ghq/`
   projects-audit.md           the "audit my projects" playbook
   self-operation.md           how ai-ops dogfoods itself
-  decisions/                  ADRs 0001-0008
+  decisions/                  ADRs (see decisions/INDEX.md for the full list)
   plans/                      active execution plans + archive
 templates/                    project / migration / handoff / execution-plan templates
 ```

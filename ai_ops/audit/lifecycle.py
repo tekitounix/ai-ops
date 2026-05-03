@@ -100,6 +100,26 @@ JAPANESE_CHAR_RE = re.compile(r"[぀-ゟ゠-ヿ一-鿿]")
 DOCS_LANGUAGE_RATIO_THRESHOLD = 0.10
 DOCS_LANGUAGE_EXEMPT_PREFIXES = ("README",)
 
+# Phase 12 (PR δ): active doc / templates 内に旧 subcommand alias が
+# 正規 example として残るのを機械検出する。ADR (`docs/decisions/`) と
+# archive plan (`docs/plans/archive/`) は歴史記録なので除外。
+DEPRECATED_CLI_ALIASES = (
+    "propagate-anchor",
+    "propagate-init",
+    "propagate-files",
+    "worktree-new",
+    "worktree-cleanup",
+    "setup-ci-workflow",
+    "setup-codeowners",
+    "setup-ruleset",
+)
+# `ai-ops <alias>` の literal 出現を検出。`ai-ops audit lifecycle` の
+# README claim verification (旧 alias を `--help` で verify する) は
+# 別 list なので、こちらは active doc 用の独立 grep。
+DEPRECATED_ALIAS_PATTERN = re.compile(
+    r"\bai-ops\s+(" + "|".join(re.escape(a) for a in DEPRECATED_CLI_ALIASES) + r")\b"
+)
+
 # Phase 8-D: forbidden patterns from ADR 0002 / 0003 / 0007 etc.
 # Detected anywhere in active source; presence = honest-claim drift.
 # Each entry: (description, regex, scan paths relative to root).
@@ -364,6 +384,58 @@ def _japanese_char_ratio(text: str) -> float:
     return len(JAPANESE_CHAR_RE.findall(text)) / len(text)
 
 
+def _check_deprecated_alias_in_active_docs(root: Path) -> list[str]:
+    """active doc / templates 内で旧 CLI alias を正規 example として
+    記載しているなら FAIL list を返す (PR δ)。
+
+    対象: README*.md / AGENTS.md / docs/*.md (decisions/ / plans/archive/ 除外)
+    / templates/ 配下。
+    除外: docs/decisions/ (ADR は歴史記録)、docs/plans/archive/ (archived plan)、
+    `tests/` (test fixture を含む)、archived plan の path 中の任意の文字列。
+    """
+    failures: list[str] = []
+    targets: list[Path] = []
+    for name in ("README.md", "README.ja.md", "AGENTS.md"):
+        path = root / name
+        if path.is_file():
+            targets.append(path)
+    docs_dir = root / "docs"
+    if docs_dir.is_dir():
+        for md in sorted(docs_dir.glob("*.md")):
+            targets.append(md)
+        # active plan も対象 (archive は除外、plan 自身が旧 alias を seed しないように)
+        plans_dir = docs_dir / "plans"
+        if plans_dir.is_dir():
+            for plan_md in plans_dir.glob("*/plan.md"):
+                if plan_md.parent.name == "archive":
+                    continue
+                targets.append(plan_md)
+    templates_dir = root / "templates"
+    if templates_dir.is_dir():
+        for path in templates_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            # 本文 grep の対象は text 系のみ
+            if path.suffix in (".md", ".yml", ".yaml", ".template", ".json"):
+                targets.append(path)
+            elif path.name in ("pre-push", ".envrc"):
+                targets.append(path)
+    for path in targets:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for line_no, line in enumerate(text.splitlines(), 1):
+            match = DEPRECATED_ALIAS_PATTERN.search(line)
+            if match:
+                rel = path.relative_to(root).as_posix()
+                failures.append(
+                    f"{rel}:{line_no} uses deprecated alias `ai-ops {match.group(1)}` "
+                    f"(use the consolidated subcommand; PR α 統合)"
+                )
+    return failures
+
+
 def _check_docs_language_policy(root: Path) -> list[str]:
     """docs/ 直下の .md が日本語デフォルトポリシーに従っているかを検査する。
 
@@ -562,6 +634,17 @@ def run_lifecycle_audit(root: Path) -> int:
             fail += 1
     else:
         print("  OK: docs/ language policy (Japanese-by-default) honored")
+        passed += 1
+
+    # Phase 12 (PR δ): active doc / templates 内に旧 CLI alias が
+    # 残っていないかを機械検出する。ADR と archive plan は除外。
+    alias_failures = _check_deprecated_alias_in_active_docs(root)
+    if alias_failures:
+        for msg in alias_failures:
+            print(f"  FAIL: deprecated alias in active doc — {msg}")
+            fail += 1
+    else:
+        print("  OK: no deprecated CLI aliases in active docs / templates")
         passed += 1
 
     # Phase 8-D: optional OpenSSF Scorecard probe

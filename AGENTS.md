@@ -30,6 +30,8 @@ Improvement capture loop (作業中の学びを durable 化する手順) は `do
 
 - `new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
 - Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers, but it does propose installs via `bootstrap` / `update`.
+- `bootstrap` opt-in extras (one shared `--yes` flag governs confirmation skip): `--with-secrets --repo R --bw-anthropic-item I --bw-openai-item I` injects GitHub Secrets via Bitwarden (ADR 0004); `--with-pre-push-hook --project P` installs the ai-ops pre-push hook (branch-name + Tier B/C main-push gates).
+- `worktree cleanup --auto-archive` performs the plan-archive commit before removing the worktree on Tier A / unmanaged repos (Tier B/C are warned to use a PR instead). One-stop merge → archive → cleanup (ADR 0010 §Lifecycle 4).
 - When already running inside an AI agent, do not call another AI via `ai-ops --agent claude` or `ai-ops --agent codex`. Use docs directly, or use `--agent prompt-only` / `--dry-run` for prompt and discovery output only.
 
 ## Operation Model

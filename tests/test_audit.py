@@ -1090,3 +1090,68 @@ def test_recommend_tier_old_age_returns_none() -> None:
         mgd="yes", workflow_tier="D",
         visibility="private", contributors=2, age_days=400,
     ) is None
+
+
+# ---------- Phase 12: deprecated alias detection (PR δ) ----------
+
+
+def test_deprecated_alias_detected_in_active_doc(tmp_path: Path) -> None:
+    """active doc で旧 alias が使われていれば FAIL list に乗る。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "leak.md").write_text(
+        "## Example\n\nRun `ai-ops worktree-new my-slug` to start.\n",
+        encoding="utf-8",
+    )
+    failures = _check_deprecated_alias_in_active_docs(tmp_path)
+    assert any("worktree-new" in f for f in failures)
+    assert any("docs/leak.md:3" in f for f in failures)
+
+
+def test_deprecated_alias_skipped_in_decisions(tmp_path: Path) -> None:
+    """ADR (`docs/decisions/`) は歴史記録なので alias は許容。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    decisions = tmp_path / "docs" / "decisions"
+    decisions.mkdir(parents=True)
+    (decisions / "0001-foo.md").write_text(
+        "Use `ai-ops propagate-anchor` (historical example).\n",
+        encoding="utf-8",
+    )
+    assert _check_deprecated_alias_in_active_docs(tmp_path) == []
+
+
+def test_deprecated_alias_skipped_in_archive_plan(tmp_path: Path) -> None:
+    """archive plan は執筆当時の状態を保持するので alias は許容。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    archive = tmp_path / "docs" / "plans" / "archive" / "2026-01-01-foo"
+    archive.mkdir(parents=True)
+    (archive / "plan.md").write_text(
+        "Run `ai-ops worktree-cleanup` after merge.\n", encoding="utf-8",
+    )
+    assert _check_deprecated_alias_in_active_docs(tmp_path) == []
+
+
+def test_deprecated_alias_detected_in_template(tmp_path: Path) -> None:
+    """templates/ 配下も検査対象 (使用者がコピペするため)。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "plan.md").write_text(
+        "Created via `ai-ops worktree-new <slug>`.\n", encoding="utf-8",
+    )
+    failures = _check_deprecated_alias_in_active_docs(tmp_path)
+    assert any("templates/plan.md" in f for f in failures)
+
+
+def test_real_repo_passes_deprecated_alias_check() -> None:
+    """ai-ops 自身の active doc / templates が新 alias 検査を pass する (回帰)。"""
+    from ai_ops.audit.lifecycle import _check_deprecated_alias_in_active_docs
+
+    repo = Path(__file__).resolve().parents[1]
+    failures = _check_deprecated_alias_in_active_docs(repo)
+    assert failures == [], f"deprecated aliases still in docs: {failures}"
