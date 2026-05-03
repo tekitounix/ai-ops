@@ -12,7 +12,12 @@ from ai_ops.audit.lifecycle import run_lifecycle_audit
 from ai_ops.audit.nix import run_nix_audit, run_nix_propose, run_nix_report
 from ai_ops.audit.security import run_security_audit
 from ai_ops.audit.standard import run_standard_audit
-from ai_ops.bootstrap import run_install, run_install_secrets, run_update
+from ai_ops.bootstrap import (
+    install_pre_push_hook,
+    run_install,
+    run_install_secrets,
+    run_update,
+)
 from ai_ops.checks.runner import run_check
 from ai_ops.config import load_agent_config
 from ai_ops.lifecycle.migration import build_migration_prompt
@@ -203,6 +208,16 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument(
         "--bw-field", dest="bw_field", default="api_key",
         help="Bitwarden field name to read (default: api_key; falls back to login.password)",
+    )
+    # PR γ: optional pre-push hook install
+    bootstrap.add_argument(
+        "--with-pre-push-hook", dest="with_pre_push_hook", action="store_true",
+        help="In addition to tools, install ai-ops pre-push hook (branch-name + "
+             "Tier B/C main-push checks) into the project's .git/hooks/pre-push",
+    )
+    bootstrap.add_argument(
+        "--project", type=Path, default=None,
+        help="Path to the project for --with-pre-push-hook (default: cwd)",
     )
     bootstrap.set_defaults(handler=handle_bootstrap)
 
@@ -633,23 +648,28 @@ def handle_audit(args: argparse.Namespace, root: Path) -> int:
     raise AssertionError(args.kind)
 
 
-def handle_bootstrap(args: argparse.Namespace, _root: Path) -> int:
+def handle_bootstrap(args: argparse.Namespace, root: Path) -> int:
     rc = run_install(tier_max=args.tier, dry_run=args.dry_run, yes=args.yes)
-    if not args.with_secrets:
-        return rc
-    if not args.repo:
-        print("Error: --with-secrets requires --repo OWNER/NAME", file=sys.stderr)
-        return 2
-    secrets_rc = run_install_secrets(
-        repo=args.repo,
-        anthropic_item=args.bw_anthropic_item,
-        openai_item=args.bw_openai_item,
-        bw_field=args.bw_field,
-        dry_run=args.dry_run,
-        yes=args.yes,
-    )
-    # tool install と secrets 登録の両方を成功扱いにする
-    return rc or secrets_rc
+    if args.with_secrets:
+        if not args.repo:
+            print("Error: --with-secrets requires --repo OWNER/NAME", file=sys.stderr)
+            return 2
+        secrets_rc = run_install_secrets(
+            repo=args.repo,
+            anthropic_item=args.bw_anthropic_item,
+            openai_item=args.bw_openai_item,
+            bw_field=args.bw_field,
+            dry_run=args.dry_run,
+            yes=args.yes,
+        )
+        rc = rc or secrets_rc
+    if args.with_pre_push_hook:
+        project = (args.project or root).resolve()
+        hook_rc = install_pre_push_hook(
+            project=project, dry_run=args.dry_run, yes=args.yes,
+        )
+        rc = rc or hook_rc
+    return rc
 
 
 def handle_update(args: argparse.Namespace, _root: Path) -> int:

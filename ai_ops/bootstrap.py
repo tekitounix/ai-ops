@@ -648,3 +648,51 @@ def run_install_secrets(
         else:
             failed += 1
     return 1 if failed else 0
+
+
+# ---------- pre-push hook install (PR γ, ADR 0009 / 0010 enforcement) ----------
+
+
+def install_pre_push_hook(
+    project: Path,
+    *,
+    dry_run: bool = False,
+    yes: bool = False,
+) -> int:
+    """`<project>/.git/hooks/pre-push` を `templates/artifacts/pre-push` から copy する。
+
+    既存 hook がある場合は上書きせず警告 + skip する (使用者が明示的に削除してから
+    再実行する設計)。
+    """
+    git_dir = project / ".git"
+    if not git_dir.exists():
+        print(f"Error: not a git repository: {project}", file=sys.stderr)
+        return 2
+    hook_path = git_dir / "hooks" / "pre-push"
+    template = (
+        Path(__file__).resolve().parent.parent / "templates" / "artifacts" / "pre-push"
+    )
+    if not template.is_file():
+        print(f"Error: hook template not found at {template}", file=sys.stderr)
+        return 2
+    if hook_path.exists():
+        print(
+            f"WARN: {hook_path} already exists. Remove it first if you want "
+            "ai-ops to install ours.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Will install pre-push hook to {hook_path}")
+    print(f"  source: {template}")
+    if dry_run:
+        print("  [dry-run] no write performed")
+        return 0
+    if not yes and not _confirm("\nProceed?", dry_run=dry_run):
+        print("Skipped.")
+        return 0
+    import shutil as _shutil
+    hook_path.parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copy2(template, hook_path)
+    hook_path.chmod(0o755)
+    print(f"  OK: installed pre-push hook at {hook_path}")
+    return 0

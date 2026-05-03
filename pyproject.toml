@@ -31,4 +31,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "slow: integration tests that build a wheel or run pip; not in default run",
+    "smoke: live external API tests (requires ANTHROPIC_API_KEY / OPENAI_API_KEY); skipped without keys",
 ]

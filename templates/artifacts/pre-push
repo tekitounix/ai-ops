@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# ai-ops pre-push hook (ADR 0009 / 0010 enforcement, optional install)
+#
+# Installed by `ai-ops bootstrap --with-pre-push-hook --project <path>`.
+# Two checks, both local:
+#   1. branch name matches `<type>/<slug>` (`type` ∈ feat/fix/chore/docs/refactor)
+#   2. Tier B/C projects: refuse direct push to main / master
+# Bypass the hook with `git push --no-verify` ONLY in true emergencies.
+
+set -e
+remote="$1"
+url="$2"
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
+
+while read local_ref local_sha remote_ref remote_sha; do
+    branch="${local_ref#refs/heads/}"
+
+    # Allow branch deletions (local_sha is all zeros).
+    if [ "$local_sha" = "$zero" ]; then
+        continue
+    fi
+
+    if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+        if [ -f .ai-ops/harness.toml ] && \
+           grep -qE '^[[:space:]]*workflow_tier[[:space:]]*=[[:space:]]*"[BC]"' .ai-ops/harness.toml; then
+            echo "ai-ops pre-push: direct push to '$branch' is forbidden by Tier B/C policy" >&2
+            echo "  Open a feature branch and PR instead (ADR 0009)." >&2
+            exit 1
+        fi
+        # Tier A / D / unmanaged: direct push allowed
+    elif ! [[ "$branch" =~ ^(feat|fix|chore|docs|refactor)/[a-z0-9._-]+$ ]]; then
+        echo "ai-ops pre-push: branch '$branch' does not match <type>/<slug> convention (ADR 0010)" >&2
+        echo "  expected types: feat / fix / chore / docs / refactor" >&2
+        echo "  rename with: git branch -m <new-name>" >&2
+        exit 1
+    fi
+done
+
+exit 0
