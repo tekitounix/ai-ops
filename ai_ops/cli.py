@@ -23,6 +23,7 @@ from ai_ops.propagate import (
     run_propagate_init,
 )
 from ai_ops.report import run_report_drift
+from ai_ops.review import run_review_pr
 from ai_ops.setup import (
     VALID_TIERS,
     run_setup_ci_workflow,
@@ -369,6 +370,25 @@ def build_parser() -> argparse.ArgumentParser:
     setup_rs.add_argument("--dry-run", action="store_true")
     setup_rs.set_defaults(handler=handle_setup_ruleset)
 
+    review = sub.add_parser(
+        "review-pr",
+        help="Review a PR against ai-ops contracts using an LLM (ADR 0012)",
+    )
+    review.add_argument(
+        "--pr", type=int, required=True,
+        help="Pull request number to review",
+    )
+    review.add_argument(
+        "--repo", default=None,
+        help="GitHub repo (owner/name); defaults to cwd's origin",
+    )
+    review.add_argument(
+        "--provider", default="auto", choices=("auto", "anthropic", "openai"),
+        help="LLM provider to use (default: auto = ANTHROPIC > OPENAI by env var)",
+    )
+    review.add_argument("--dry-run", action="store_true")
+    review.set_defaults(handler=handle_review_pr)
+
     return parser
 
 
@@ -573,6 +593,16 @@ def handle_setup_ruleset(args: argparse.Namespace, root: Path) -> int:
         project=args.project.resolve(),
         tier=args.tier,
         dry_run=args.dry_run,
+    )
+
+
+def handle_review_pr(args: argparse.Namespace, root: Path) -> int:
+    return run_review_pr(
+        pr=args.pr,
+        repo=args.repo,
+        dry_run=args.dry_run,
+        provider=args.provider,
+        cwd=root,
     )
 
 

@@ -14,7 +14,7 @@ This repo is the cross-project AI operations source of truth. Keep it small. If 
 
 ## Lifecycle and CLI
 
-Master operation guide: `docs/operation.md`. It documents the canonical lifecycle (`Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -> Adopt`), the sub-flow selector (new project / migrate / realign / relocate / projects audit / self-operation / propagation), the **5 strategies (Git / ghq / GitHub / Nix / plan) with an automated-vs-manual responsibility matrix**, and a CLI quick reference grouped by intent.
+Master operation guide: `docs/operation.md`. It documents the canonical lifecycle (`Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -> Adopt`), the **AI-agent-driven workflow (14 steps with 3 human-intervention points)**, the sub-flow selector (new project / migrate / realign / relocate / projects audit / self-operation / propagation), the **5 strategies (Git / ghq / GitHub / Nix / plan) with a 3-column responsibility matrix (AI agent / scheduled cron / human)**, the **two-layer PR review (Copilot Code Review + `ai-ops review-pr`, ADR 0012)**, and a CLI quick reference grouped by intent.
 
 User-facing entrypoint: `README.md`. The README's second Quick start prompt (`align this project`) decides between migrate / realign / relocate / no-op for a single working tree; the third (`audit my projects`) sweeps every ghq-tracked project and routes each P0 / P1 finding into the matching sub-flow with its own confirmation. Both prompts include `docs/projects-audit.md` and `docs/project-relocation.md` as their authoritative playbooks.
 

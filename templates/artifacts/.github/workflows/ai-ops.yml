@@ -20,3 +20,13 @@ jobs:
     with:
       tier: 'D'  # set to A/B/C/D per your project's tier
       ai_ops_ref: 'main'  # or a release tag like 'v0.1.0'
+
+  review:
+    # ADR 0012: ai-ops 固有規約に対する AI レビュー。
+    # ANTHROPIC_API_KEY または OPENAI_API_KEY を repo secrets に登録すると有効化。
+    # 両方無い場合は neutral status を返して skip する (CI を壊さない)。
+    uses: tekitounix/ai-ops/.github/workflows/managed-project-review.yml@v1
+    with:
+      tier: 'D'
+      ai_ops_ref: 'main'
+    secrets: inherit

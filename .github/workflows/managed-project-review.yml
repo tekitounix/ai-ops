@@ -1,0 +1,63 @@
+name: managed-project-review
+# ADR 0012: ai-ops 固有規約に対する PR の AI レビューを担う reusable workflow。
+# 各管理対象プロジェクトの `.github/workflows/ai-ops.yml` から呼ばれる。
+# Tier B+ では ruleset で `ai-ops AI Review` を必須 status check にする。
+
+on:
+  workflow_call:
+    inputs:
+      tier:
+        description: "Workflow tier (A/B/C/D) per ADR 0009"
+        type: string
+        default: 'D'
+      ai_ops_ref:
+        description: "ai-ops branch / tag to install (default: main)"
+        type: string
+        default: 'main'
+      provider:
+        description: "LLM provider (auto / anthropic / openai)"
+        type: string
+        default: 'auto'
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling project
+        uses: actions/checkout@v4
+        with:
+          # PR head SHA を確実に取るため fetch-depth を 0 に
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ai-ops
+        run: |
+          pip install "git+https://github.com/tekitounix/ai-ops@${{ inputs.ai_ops_ref }}"
+
+      - name: Run ai-ops review-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          ai-ops review-pr \
+            --pr ${{ github.event.pull_request.number }} \
+            --provider ${{ inputs.provider }}
+
+      - name: Inform tier
+        run: |
+          echo "::notice::ai-ops AI Review at tier ${{ inputs.tier }}"
