@@ -81,6 +81,15 @@ README_CLAIMED_SUBCOMMANDS: tuple[tuple[str, ...], ...] = (
 
 PLAN_STALE_DAYS = 30
 
+# Phase 11: docs/ language policy (AGENTS.md §Natural language).
+# `AGENTS.md`, docs, issues, PRs, briefs, plans は日本語デフォルト。
+# README* は英語デフォルト (公開エントリポイント)。docs/decisions/ は ADR 慣行で英語。
+# 対象は docs 直下の .md のみ。比率は「ひらがな + カタカナ + 漢字」/ 総文字数。
+# 0.10 未満 = 純英語と判定 (健全な日本語文書は実測 0.36-0.51)。
+JAPANESE_CHAR_RE = re.compile(r"[぀-ゟ゠-ヿ一-鿿]")
+DOCS_LANGUAGE_RATIO_THRESHOLD = 0.10
+DOCS_LANGUAGE_EXEMPT_PREFIXES = ("README",)
+
 # Phase 8-D: forbidden patterns from ADR 0002 / 0003 / 0007 etc.
 # Detected anywhere in active source; presence = honest-claim drift.
 # Each entry: (description, regex, scan paths relative to root).
@@ -324,6 +333,41 @@ def _outcomes_still_tbd(text: str) -> bool:
     return _outcomes_starts_with_tbd(text)
 
 
+def _japanese_char_ratio(text: str) -> float:
+    """ひらがな + カタカナ + 漢字 / 総文字数。空文字列は 0.0。"""
+    if not text:
+        return 0.0
+    return len(JAPANESE_CHAR_RE.findall(text)) / len(text)
+
+
+def _check_docs_language_policy(root: Path) -> list[str]:
+    """docs/ 直下の .md が日本語デフォルトポリシーに従っているかを検査する。
+
+    対象: ``docs/*.md`` の直下のみ。サブディレクトリ (`decisions/`, `plans/`) は除外。
+    例外: ``README*`` は英語デフォルト (AGENTS.md §Natural language)。
+    判定: 比率が ``DOCS_LANGUAGE_RATIO_THRESHOLD`` 未満なら違反。
+    """
+    docs_dir = root / "docs"
+    if not docs_dir.is_dir():
+        return []
+    failures: list[str] = []
+    for md in sorted(docs_dir.glob("*.md")):
+        if any(md.name.startswith(prefix) for prefix in DOCS_LANGUAGE_EXEMPT_PREFIXES):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        ratio = _japanese_char_ratio(text)
+        if ratio < DOCS_LANGUAGE_RATIO_THRESHOLD:
+            failures.append(
+                f"{md.relative_to(root)} japanese-char ratio "
+                f"{ratio:.1%} < threshold {DOCS_LANGUAGE_RATIO_THRESHOLD:.0%} "
+                f"(AGENTS.md §Natural language: docs/ は日本語デフォルト)"
+            )
+    return failures
+
+
 def _outcomes_filled(text: str) -> bool:
     """True when Outcomes & Retrospective has substantive content (not TBD).
 
@@ -479,6 +523,16 @@ def run_lifecycle_audit(root: Path) -> int:
         for _, pat, paths in FORBIDDEN_ACTIVE_PATTERNS
     ):
         print(f"  OK: no forbidden ADR patterns ({len(FORBIDDEN_ACTIVE_PATTERNS)} checks)")
+
+    # Phase 11: docs/ 配下の言語ポリシー (AGENTS.md §Natural language)
+    language_failures = _check_docs_language_policy(root)
+    if language_failures:
+        for msg in language_failures:
+            print(f"  FAIL: docs language policy — {msg}")
+            fail += 1
+    else:
+        print("  OK: docs/ language policy (Japanese-by-default) honored")
+        passed += 1
 
     # Phase 8-D: optional OpenSSF Scorecard probe
     ran, msg = _check_scorecard(root)

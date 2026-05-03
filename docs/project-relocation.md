@@ -1,83 +1,83 @@
-# Project Physical Relocation
+# プロジェクトの物理 relocation
 
-> Master operation guide: [`operation.md`](operation.md). This is the deep-dive on the relocate sub-flow (special: physical path migration with session-history preservation).
+> マスター運用ガイド: [`operation.md`](operation.md)。これは relocate sub-flow の deep-dive (特殊: セッション履歴を保ちながらの物理パス移行)。
 >
-> Scope: move an existing project from outside `~/ghq/` (e.g. `~/work/<repo>`, `~/Documents/<repo>`) into `~/ghq/<host>/<owner>/<repo>/` while keeping AI session history, IDE workspace state, and build environment functional. **Full migration**: every reference to the old path is severed (no back-symlink, no baked-in cwd in chat history, no orphaned IDE storage).
+> スコープ: `~/ghq/` 外 (例: `~/work/<repo>`、`~/Documents/<repo>`) の既存プロジェクトを `~/ghq/<host>/<owner>/<repo>/` 配下へ移し、AI セッション履歴、IDE ワークスペース状態、ビルド環境を機能させ続ける。**完全移行**: 旧 path への参照をすべて切る (back-symlink 無し、チャット履歴に焼き付いた cwd 無し、孤立した IDE ストレージ無し)。
 >
-> Status: end-to-end recovery validated against a 3-way split (`HASH_OLD` symlink fragment + `HASH_NEW_V1` dot-preserving sanitize + `HASH_NEW_V2` dot-replacing sanitize) — Claude session merge, VS Code chat-state rsync, and Phase 4 grep-zero criteria all passed. The orchestrated in-session path (`AI_OPS_MIGRATION_IN_PROGRESS=1`) remains exercised only in dry-run; record real-world signal here when it occurs.
+> 状態: 3-way split (`HASH_OLD` symlink fragment + `HASH_NEW_V1` ドット保持 sanitize + `HASH_NEW_V2` ドット置換 sanitize) に対する end-to-end 復旧を検証済み — Claude セッション merge、VS Code チャット状態 rsync、Phase 4 の grep-zero 基準すべて合格。In-session 経路 (`AI_OPS_MIGRATION_IN_PROGRESS=1`) は dry-run のみで運用検証済み。実運用の signal が出たらここに記録すること。
 
-This playbook covers three scenarios:
+この playbook は 3 シナリオを扱う。
 
-| Scenario | Entry signal |
+| シナリオ | 入口 signal |
 |---|---|
-| **Clean migration** | Project is outside `~/ghq/`, AI substrate lives at one canonical hash, no prior partial moves |
-| **Recovery** | Filesystem move already happened, but AI substrate is split / partially rewritten / orphaned (see [Recovery](#recovery-partial-migration)) |
-| **Preventive setup** | New project being placed under `~/ghq/...` from the start; only Phase 4-style invariants apply |
+| **Clean migration** | プロジェクトが `~/ghq/` 外、AI substrate は単一の canonical hash、過去の partial 移動なし |
+| **Recovery** | ファイルシステム移動は完了したが、AI substrate が分裂 / 部分書換 / 孤立 (下記 [Recovery](#recovery-partial-migration) 参照) |
+| **Preventive setup** | 新規プロジェクトを最初から `~/ghq/...` 配下に置く。Phase 4 相当の invariant のみ適用 |
 
-## When to use
+## 使うべきとき
 
-Use this playbook when `align this project` (the second Quick start prompt) discovers that the working tree is outside `~/ghq/`, or when any other audit flags repo path as a drift signal. It is **not** the right entry point for greenfield work (use the first Quick start prompt) or in-tree refactors (use `docs/realignment.md`).
+`align this project` (Quick start プロンプト 2 番目) が「作業ツリーが `~/ghq/` 外」を発見したとき、または他の監査が repo path を drift signal としてフラグ付けしたときに使う。greenfield 作業 (Quick start 1 番目) や in-tree refactor (`docs/realignment.md`) には使わない。
 
-Pre-conditions:
+事前条件:
 
-- All wanted changes are committed and pushed.
-- The target path `~/ghq/<host>/<owner>/<repo>/` does not already exist.
-- A full backup of the AI substrate has been taken — Phase 3 rewrites session files in place.
-- **The migration agent's cwd resolves to the canonical path you intend, not via a symlink.** See [In-session migration](#in-session-migration-self-protection) before running `mv` from inside an active session at `$OLD`.
+- 残したい変更はすべて commit と push 済み。
+- 目的地 `~/ghq/<host>/<owner>/<repo>/` がまだ存在しない。
+- AI substrate のフルバックアップを取得済み — Phase 3 はセッションファイルを in-place で書き換える。
+- **移行エージェントの cwd が、symlink 経由ではなく意図する canonical path に解決されること。** $OLD で active なセッション内から `mv` を走らせる場合は事前に [In-session migration](#in-session-migration-self-protection) を読む。
 
-## AI tool substrate reference
+## AI ツール substrate リファレンス
 
-Each AI tool maps an absolute path to a per-project storage location. The mapping rule and whether the tool resolves `cwd` through symlinks (`realpath`) determine how robust the substrate is to relocation. Tool releases change these rules — check the table at the top of every migration and update as new versions ship.
+各 AI ツールは絶対 path をプロジェクトごとのストレージにマップする。マッピング規則と、ツールが `cwd` を symlink 経由で解決するか (`realpath`) が、relocation に対する substrate の堅牢性を決める。ツールリリースで規則が変わるので、毎回の移行時に表頭をチェックし、新版が出たら更新する。
 
-| Tool | Storage root (macOS) | Path → key transform | Resolves symlinks? | Rewriteable in-place? |
+| ツール | ストレージ root (macOS) | Path → key 変換 | symlink 解決? | in-place 書換可? |
 |---|---|---|---|---|
-| Claude Code (≥ 2.1.x) | `~/.claude/projects/` | `tr './' '-'` (both `/` and `.` → `-`) | No (records `cwd` as invoked) | Yes — `*.jsonl` is text |
-| Claude Code (< 2.1.x) | `~/.claude/projects/` | `tr / -` (only `/` → `-`, `.` kept) | No | Yes — `*.jsonl` is text |
-| Codex CLI | `~/.codex/` | per session/config files; mostly text | Yes (records realpath of cwd) | Yes — text files |
-| Cursor | `~/Library/Application Support/Cursor/User/workspaceStorage/<md5>/` | md5 of `file://` workspace folder URI | No | **Mixed** — JSON yes, sqlite needs the tool's own export/import |
-| VS Code (+ Copilot Chat) | `~/Library/Application Support/Code/User/workspaceStorage/<md5>/` | md5 of `file://` workspace folder URI | No | Mixed — `chatSessions/`, `chatEditingSessions/`, `GitHub.copilot-chat/` are JSON; `state.vscdb` (sqlite) is binary |
-| Copilot (CLI) | `~/.copilot/` | per session text files | Varies by version | Yes |
-| Aider | `~/.aider.*` and per-repo `.aider.chat.history.md` | absolute paths in chat log | No | Yes — markdown |
+| Claude Code (≥ 2.1.x) | `~/.claude/projects/` | `tr './' '-'` (`/` も `.` も `-` へ) | しない (起動時の `cwd` を記録) | はい — `*.jsonl` はテキスト |
+| Claude Code (< 2.1.x) | `~/.claude/projects/` | `tr / -` (`/` のみ。`.` は保持) | しない | はい — `*.jsonl` はテキスト |
+| Codex CLI | `~/.codex/` | session/config ファイル単位。ほぼテキスト | する (cwd の realpath を記録) | はい — テキストファイル |
+| Cursor | `~/Library/Application Support/Cursor/User/workspaceStorage/<md5>/` | `file://` ワークスペースフォルダ URI の md5 | しない | **混在** — JSON はい、sqlite はツール独自の export/import が必要 |
+| VS Code (+ Copilot Chat) | `~/Library/Application Support/Code/User/workspaceStorage/<md5>/` | `file://` ワークスペースフォルダ URI の md5 | しない | 混在 — `chatSessions/`、`chatEditingSessions/`、`GitHub.copilot-chat/` は JSON、`state.vscdb` (sqlite) はバイナリ |
+| Copilot (CLI) | `~/.copilot/` | session ごとのテキストファイル | バージョン依存 | はい |
+| Aider | `~/.aider.*` と repo ごとの `.aider.chat.history.md` | チャットログ内の絶対 path | しない | はい — markdown |
 
-Linux substitutes `~/.config/` for `~/Library/Application Support/`; Windows (WSL) follows the Linux layout. **Each migration must enumerate every applicable storage root from this table and check it in Phase 1.**
+Linux は `~/Library/Application Support/` の代わりに `~/.config/`、Windows (WSL) は Linux と同じ。**毎回の移行で、この表から該当する全ストレージ root を列挙し、Phase 1 でチェックする。**
 
-## Operation Model
+## 運用モデル
 
-Relocation is destructive (filesystem move + AI substrate rename + content rewrite + IDE workspace storage migration) and follows AGENTS.md §Operation Model: each Step is its own Propose → Confirm → Execute. Multi-step inside a single Step shares one confirmation when the full list is presented up front.
+Relocation は破壊的 (filesystem move + AI substrate rename + content rewrite + IDE workspace storage migration) で、AGENTS.md §Operation Model に従う。各 Step は独自の Propose → Confirm → Execute。Step 内の複数操作は、最初に全リストを提示すれば 1 確認を共有できる。
 
 ```text
-Phase 1 Discovery -> Phase 2 Plan -> Phase 3 Execute (per step) -> Phase 4 Verify
+Phase 1 Discovery -> Phase 2 Plan -> Phase 3 Execute (step ごと) -> Phase 4 Verify
 ```
 
-Recovery from a partial migration follows the same four phases but uses the [Recovery](#recovery-partial-migration) merge strategy instead of straight `mv` in Step 2.
+partial 移行からの復旧は同じ 4 フェーズだが、Step 2 を straight `mv` ではなく [Recovery](#recovery-partial-migration) の merge 戦略に置き換える。
 
 ## In-session migration: self-protection
 
-If the AI agent driving the migration is itself running inside the project at `$OLD`, the agent's own cwd, hook scripts, and AI substrate can be invalidated mid-move.
+移行を駆動する AI エージェント自身が `$OLD` 内のプロジェクト内で動いている場合、エージェント自身の cwd、フックスクリプト、AI substrate が移動の途中で無効化される可能性がある。
 
-**Default**: ask the user to open a fresh terminal whose cwd is **not** inside the project, then re-invoke the migration from that terminal. This is the safest path; almost every other concern below disappears.
+**default**: プロジェクト内に **無い** cwd を持つ新しいターミナルを開いてもらい、そこから移行を再起動するよう使用者に依頼する。これが最も安全な経路で、下記の懸念のほとんどは消える。
 
-If in-session migration is unavoidable, follow this orchestrated transition:
+In-session migration が避けられない場合は、次のオーケストレーション付き transition に従う。
 
-1. Phase 1 backup is taken first (all AI substrate, including the migration agent's own session if applicable).
-2. Resolve symlinks before doing anything destructive:
+1. Phase 1 のバックアップを最初に取る (移行エージェント自身のセッションを含む全 AI substrate)。
+2. 破壊的操作の前に symlink を解決する。
    ```sh
    ACTUAL_CWD=$(realpath .)
    echo "agent realpath cwd: $ACTUAL_CWD"
    [ "$ACTUAL_CWD" = "$OLD" ] || echo "WARN: cwd resolves to $ACTUAL_CWD, not $OLD"
    ```
-3. If the project ships hook scripts that read `$OLD`-keyed paths, set `AI_OPS_MIGRATION_IN_PROGRESS=1` and have those hooks short-circuit while the variable is set. ai-ops itself ships no hooks; this is a project-level convention.
-4. Run Steps 1 → 5 normally. After Step 2's `mv` the agent's cwd becomes a stale path; switch with `cd "$NEW"` immediately.
-5. Phase 4 verifies cwd, hooks, and substrate continuity (see check 7 below) before clearing `AI_OPS_MIGRATION_IN_PROGRESS`.
+3. プロジェクトが `$OLD` keyed の path を読むフックスクリプトを持つ場合、`AI_OPS_MIGRATION_IN_PROGRESS=1` を設定し、変数が立っている間それらのフックを short-circuit させる。ai-ops 自身はフックを持たない。これはプロジェクトレベルの慣習。
+4. Step 1 → 5 を通常通り実行する。Step 2 の `mv` 後にエージェントの cwd は stale path になるので、即座に `cd "$NEW"` する。
+5. Phase 4 で cwd、hook、substrate continuity を検証してから (下記 check 7 参照) `AI_OPS_MIGRATION_IN_PROGRESS` を解除する。
 
-`align this project` agents should default to "ask the user to switch terminals" rather than attempting in-session migration.
+`align this project` エージェントは default で「ターミナルを切り替えるよう使用者に依頼」を選ぶ。in-session 移行を試みるのは最後の手段。
 
 ## Phase 1 — Discovery (read-only)
 
-Record each result. The Brief shows them before any move.
+各結果を記録する。Brief は移動前にこれらを示す。
 
 ```sh
-OLD=<old-path>                        # e.g. $HOME/work/<repo>
+OLD=<old-path>                        # 例: $HOME/work/<repo>
 NEW=$HOME/ghq/<host>/<owner>/<repo>
 
 # 1. uncommitted state
@@ -89,16 +89,16 @@ git -C "$OLD" ls-files | wc -l
 # 3. build / cache footprint (Step 1 candidates)
 du -sh "$OLD"/{build,.xmake,.cache,target,dist,node_modules,.venv,__pycache__} 2>/dev/null
 
-# 4. realpath / symlink check — surfaces split-hash risk before it becomes drift
+# 4. realpath / symlink check — split-hash リスクが drift になる前に浮上させる
 [ -L "$OLD" ] && echo "WARN: $OLD is a symlink → its target is the canonical path"
 ACTUAL_OLD=$(realpath "$OLD")
 [ "$ACTUAL_OLD" = "$OLD" ] || echo "INFO: working-tree canonical path is $ACTUAL_OLD"
 ```
 
 ```sh
-# 5. Claude Code substrate hash candidates (cover the v2 / v1 sanitize drift).
-#    v2 (≥ 2.1.x): both `/` and `.` are replaced with `-`
-#    v1 (< 2.1.x): only `/` is replaced; `.` stays
+# 5. Claude Code substrate hash 候補 (v2 / v1 sanitize drift をカバー)
+#    v2 (≥ 2.1.x): `/` と `.` の両方が `-` に置換される
+#    v1 (< 2.1.x): `/` のみ置換、`.` はそのまま
 HASH_V2=$(echo "$OLD" | tr './' '-')
 HASH_V1=$(echo "$OLD" | tr / -)
 NEW_HASH=$(echo "$NEW"  | tr './' '-')
@@ -109,15 +109,14 @@ for h in "$HASH_V2" "$HASH_V1"; do
         echo "claude substrate hit: $HOME/.claude/projects/$h"
 done
 
-# 6. content path-mention counts across every text-based AI substrate
+# 6. 全テキストベース AI substrate 横断のコンテンツ path 出現数
 grep -rlI -F "$OLD" "$HOME/.claude/projects" 2>/dev/null | wc -l
 grep -rlI -F "$OLD" "$HOME/.codex" "$HOME/.copilot" "$HOME/.aider" 2>/dev/null | wc -l
 ```
 
 ```sh
-# 7. IDE workspace storage hashes (md5 of the folder URI). Search the
-#    workspace.json files instead of trying to recompute md5 — they record
-#    the URI exactly as the IDE stored it.
+# 7. IDE workspace storage hash (フォルダ URI の md5)。md5 を計算し直すのではなく
+#    workspace.json を grep する — IDE が記録した URI そのままを反映している。
 case "$(uname -s)" in
     Darwin) IDE_BASE="$HOME/Library/Application Support" ;;
     *)      IDE_BASE="$HOME/.config" ;;
@@ -130,10 +129,10 @@ for ide in Code Cursor; do
     done
 done
 
-# 8. target path must not exist
+# 8. 目的地が存在してはならない
 ls -la "$NEW" 2>/dev/null | head -1
 
-# 9. mandatory backup (AI substrate + IDE workspace storage)
+# 9. 必須バックアップ (AI substrate + IDE workspace storage)
 BACKUP_ROOT="$HOME/.ai-ops-relocation-backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_ROOT"
 cp -a "$HOME/.claude/projects" "$BACKUP_ROOT/claude-projects" 2>/dev/null || true
@@ -146,13 +145,13 @@ done
 echo "AI / IDE substrate backup: $BACKUP_ROOT"
 ```
 
-If `$NEW` already exists, stop and resolve manually. If multiple Claude hash candidates hit (v1 and v2 both have a directory), the project is in a split state — go to [Recovery](#recovery-partial-migration) before running Phase 3.
+`$NEW` がすでに存在する場合は止めて手動で解決する。Claude hash 候補が複数ヒット (v1 と v2 両方にディレクトリがある) する場合、プロジェクトは split 状態 — Phase 3 に進む前に [Recovery](#recovery-partial-migration) へ。
 
 ## Phase 2 — Plan
 
-The Brief lists the exact source / destination paths and identifies which AI substrate, IDE workspace storage, and build cache will be moved, rewritten, reset, or left alone. The Brief states **explicitly that no back-symlink will be left at `$OLD`** (see Step 2). User confirms the Brief before any Step in Phase 3.
+Brief は正確な source / destination パスをリストし、どの AI substrate、IDE workspace storage、ビルドキャッシュが移動・書換・リセット・据え置きされるかを特定する。Brief は **`$OLD` に back-symlink を残さないことを明示する** (Step 2 参照)。Phase 3 のいずれの Step も使用者の Brief 確認後にしか実行しない。
 
-## Phase 3 — Execute (per-step confirmation)
+## Phase 3 — Execute (step ごとの確認)
 
 ### Step 1: snapshot + cache cleanup
 
@@ -164,9 +163,9 @@ git -C "$OLD" push
 rm -rf "$OLD"/{build,.xmake,.cache,target,dist,node_modules,.venv,__pycache__}
 ```
 
-Compile databases (`compile_commands.json`) and other tools that bake absolute paths regenerate from sources at `$NEW`; deleting them avoids stale references to `$OLD`.
+コンパイルデータベース (`compile_commands.json`) や絶対 path を焼き付ける他のツールは `$NEW` のソースから再生成される。削除しておけば `$OLD` への stale 参照が残らない。
 
-### Step 2: physical move (NO back-symlink for full migration)
+### Step 2: 物理移動 (完全移行では back-symlink を作らない)
 
 ```sh
 mkdir -p "$(dirname "$NEW")"
@@ -174,58 +173,56 @@ mkdir -p "$(dirname "$NEW")"
 mv "$OLD" "$NEW"
 ```
 
-**Do NOT create a back-symlink at `$OLD`.** It is an anti-pattern for full migration:
+**`$OLD` に back-symlink を作ってはならない。** 完全移行ではアンチパターン:
 
 ```sh
-# ✗ ANTI-PATTERN — do NOT do this:
+# ✗ ANTI-PATTERN — 絶対にやらない:
 # ln -s "$NEW" "$OLD"
 ```
 
-Reasons the back-symlink hurts:
+back-symlink が害になる理由:
 
-- IDE / shell history resolves `$OLD` and the user keeps working there unaware. The next Claude Code session records `cwd: $OLD` again, undoing Step 3's rewrite.
-- AI tools that do not realpath-resolve `cwd` (Claude Code, VS Code) will re-create a separate substrate at the symlinked path → split-hash drift.
-- "Single source of truth" is lost; two paths point at the same project and only one is canonical.
-- Legacy scripts or shell aliases that still reference `$OLD` should be updated explicitly to `$NEW`, not papered over with a symlink.
+- IDE / シェル履歴は `$OLD` を解決し、使用者は気付かずそこで作業を続ける。次の Claude Code セッションは `cwd: $OLD` を再記録し、Step 3 の書換が undone になる。
+- `cwd` を realpath 解決しない AI ツール (Claude Code、VS Code) は symlink path に別 substrate を再生成 → split-hash drift。
+- 「single source of truth」が失われる。同じプロジェクトを 2 つの path が指し、片方しか canonical でない。
+- `$OLD` を参照する legacy スクリプトやシェル alias は、symlink で誤魔化さず明示的に `$NEW` へ更新する。
 
-The narrow exception is a short transition window where IDE workspace migration is the only thing left and the symlink will be removed the moment Phase 4 confirms the IDE points at `$NEW`. State the removal step and timing in the Brief; do not leave a symlink behind by default.
+唯一の例外は、IDE workspace migration だけが残った短い transition window で、Phase 4 が IDE が `$NEW` を指していることを確認した瞬間に symlink を削除する場合。Brief に削除手順とタイミングを明記すること。default では symlink を残さない。
 
-### Step 3: AI substrate (rename + content rewrite, including v1/v2 hash merge)
+### Step 3: AI substrate (rename + content rewrite。v1/v2 hash merge 含む)
 
-`~/.claude/projects/<hash>/` is keyed on the absolute path; each `.jsonl` also bakes the path into `cwd`, file-resource URIs, and tool-result fields — typically thousands of mentions per active session. Renaming the directory alone leaves the next session pointed at `$OLD`. Both rename and content rewrite are required; if v1 and v2 hash directories both exist, they must merge into the new hash.
+`~/.claude/projects/<hash>/` は絶対 path をキーとし、各 `.jsonl` も path を `cwd`、ファイルリソース URI、ツール結果フィールドに焼き付けている — active セッション 1 件あたり数千の言及が普通。ディレクトリ rename だけでは次のセッションが `$OLD` を指したままになる。rename と content rewrite (内容書き換え) の両方が必須。v1 と v2 の hash ディレクトリが両方存在する場合、新 hash に merge する。
 
 ```sh
 NEW_DIR="$HOME/.claude/projects/$NEW_HASH"
 
-# 3.1 rename / merge old hash directories into the new-hash directory.
+# 3.1 旧 hash ディレクトリ群を新 hash ディレクトリに rename / merge する。
 #
-# INVARIANT: `cp -an "$src"/*` copies *every* entry, not just `*.jsonl`.
-# Per-session UUID-named subdirectories, `memory/`, `tool-results/`, and any
-# other top-level entries must move together with their sibling jsonls.
-# A naive `*.jsonl` filter silently drops them and the next session loses
-# its conversation memory and tool-result cache.
+# INVARIANT: `cp -an "$src"/*` は *全* エントリをコピーする (`*.jsonl` だけではない)。
+# session UUID 名のサブディレクトリ、`memory/`、`tool-results/`、その他の
+# トップレベルエントリは jsonls と一緒に移動しなければならない。
+# 安易な `*.jsonl` フィルタはこれらを silently 落とし、次のセッションが
+# 会話メモリと tool-result キャッシュを失う。
 mkdir -p "$NEW_DIR"
 for h in "$HASH_V2" "$HASH_V1"; do
     src="$HOME/.claude/projects/$h"
     [ -d "$src" ] && [ "$src" != "$NEW_DIR" ] || continue
     cp -an "$src"/* "$NEW_DIR/" 2>/dev/null || true
-    # Old-hash dir is preserved for rollback; user removes it after Phase 4.
+    # 旧 hash dir はロールバック用に保持。Phase 4 後に使用者が削除する。
 done
 ```
 
 ```sh
-# 3.2 content rewrite — literal replacement, regex-safe even if $OLD or $NEW
-#     contain `.`, `[`, `\`, `&`, etc. Backup was taken in Phase 1.
+# 3.2 content rewrite — リテラル置換。`$OLD` や `$NEW` に `.`、`[`、`\`、`&` 等が
+#     含まれていても regex-safe。Phase 1 でバックアップ取得済み。
 #
-# INVARIANT: `**/*.<ext>` with recursive=True scans per-session subdirs too,
-# not just the top-level files; a `*.<ext>` glob (no `**`) silently misses
-# anything below `<NEW_DIR>/<uuid>/`. Extensions cover every text format
-# Claude Code persists today: `.jsonl` (sessions, the bulk), `.md`
-# (`memory/MEMORY.md` and any per-session notes), `.json` (metadata
-# sidecars), `.txt` (`tool-results/*.txt`). Binary formats (e.g. `.pdf`)
-# are out of scope here; if a tool starts persisting binary state, list
-# its layout in the substrate reference table and add a tool-specific
-# rewrite procedure.
+# INVARIANT: `**/*.<ext>` を recursive=True で使えば session ごとのサブディレクトリも
+# scan する。`*.<ext>` (no `**`) は `<NEW_DIR>/<uuid>/` 配下を silently 見落とす。
+# 拡張子は Claude Code が現在永続化する全テキスト形式をカバー: `.jsonl`
+# (sessions、大半)、`.md` (`memory/MEMORY.md` と session 内ノート)、`.json`
+# (メタデータ sidecar)、`.txt` (`tool-results/*.txt`)。バイナリ形式 (例: `.pdf`) は
+# 対象外。ツールがバイナリ状態の永続化を始めたら、その layout を
+# substrate リファレンス表に載せ、ツール固有の rewrite 手順を追加する。
 python3 - "$OLD" "$NEW" "$NEW_DIR" <<'PY'
 import glob, sys
 old, new, target = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -247,7 +244,7 @@ PY
 ```
 
 ```sh
-# 3.3 other text-based AI substrate
+# 3.3 他のテキストベース AI substrate
 for storage in "$HOME/.codex" "$HOME/.cursor" "$HOME/.copilot" "$HOME/.aider"; do
     [ -d "$storage" ] || continue
     files=$(grep -rlI -F "$OLD" "$storage" 2>/dev/null || true)
@@ -266,19 +263,19 @@ PY
 done
 ```
 
-`grep -rlI` skips binary files (the `I` flag). Tools whose state lives in a binary store (sqlite, leveldb, etc.) need their own export/import — see Step 5b for VS Code's `state.vscdb` and Cursor's sqlite stores.
+`grep -rlI` はバイナリファイルを skip する (`I` フラグ)。状態がバイナリストア (sqlite、leveldb 等) にあるツールは独自の export/import が必要 — VS Code の `state.vscdb` と Cursor の sqlite ストアについては Step 5b 参照。
 
-### Step 4: dev environment re-init at `$NEW`
+### Step 4: dev 環境を `$NEW` で再初期化
 
 ```sh
 cd "$NEW"
-direnv allow                                     # if .envrc is present
-# project-specific re-init — only what the project actually uses:
+direnv allow                                     # .envrc がある場合
+# プロジェクト固有の再初期化 — プロジェクトが実際に使うものだけ:
 # python: uv sync   |  node: pnpm install  |  rust: cargo build
 # nix:    nix flake check
 ```
 
-### Step 5a: IDE workspace storage — identify
+### Step 5a: IDE workspace storage — 特定
 
 ```sh
 case "$(uname -s)" in
@@ -286,7 +283,7 @@ case "$(uname -s)" in
     *)      IDE_BASE="$HOME/.config" ;;
 esac
 
-# Close the IDE first — write contention against `state.vscdb` corrupts the file.
+# IDE を先に閉じる — `state.vscdb` への書込競合はファイルを破損させる。
 echo "Close VS Code / Cursor before continuing. Press enter when done."
 read -r _
 
@@ -299,11 +296,11 @@ for ide in Code Cursor; do
 done
 ```
 
-If `NEW_WS` is empty for an IDE you intend to use, opening the IDE once at `$NEW` creates the folder. Re-run Step 5a after that.
+使う予定の IDE で `NEW_WS` が空なら、IDE を `$NEW` で 1 度開けばフォルダが作られる。その後 Step 5a を再実行する。
 
-### Step 5b: IDE workspace storage — copy chat / extension state
+### Step 5b: IDE workspace storage — チャット / 拡張状態のコピー
 
-For each IDE, copy the JSON-based agent state from the OLD workspace storage to the NEW one. **Do not overwrite `state.vscdb` (sqlite)** — keep OLD's as the backup, let NEW's continue from a clean state, and rely on Step 3.3 for any text duplicates.
+各 IDE について、JSON ベースのエージェント状態を OLD ワークスペースストレージから NEW へコピーする。**`state.vscdb` (sqlite) は上書きしない** — OLD のものをバックアップとして残し、NEW のものはクリーン状態から続行させ、テキスト重複は Step 3.3 に任せる。
 
 ```sh
 for ide in Code Cursor; do
@@ -321,27 +318,27 @@ for ide in Code Cursor; do
 done
 ```
 
-After Phase 4 verifies the chat history is visible in the IDE, you may delete the OLD workspace storage directories listed above — but only with explicit user approval.
+Phase 4 で IDE 上にチャット履歴が見えることを確認したら、上記の OLD ワークスペースストレージディレクトリを削除してよい — ただし使用者の明示承認を得てから。
 
-## Phase 4 — Verify (structure AND content)
+## Phase 4 — Verify (構造 AND コンテンツ)
 
 ```sh
-# 1. git operates from the new path
+# 1. git は新しい path から動く
 git -C "$NEW" status
 git -C "$NEW" log -1
 
-# 2. project's own check passes
+# 2. プロジェクト自身の check が通る
 cd "$NEW" && python -m ai_ops check
 
-# 3. AI substrate directory exists at the new hash
+# 3. AI substrate ディレクトリが新 hash に存在
 ls "$HOME/.claude/projects/$NEW_HASH" | head -3
 
-# 4. content-level rewrite is complete — every count below MUST be 0
+# 4. content-level rewrite が完了 — 下のカウントは全部 0 でなければならない
 grep -rlI -F "$OLD" "$HOME/.claude/projects" 2>/dev/null | wc -l
 grep -rlI -F "$OLD" "$HOME/.codex" "$HOME/.copilot" "$HOME/.aider" 2>/dev/null | wc -l
 
-# 5. no split-hash directories — only the new-hash directory should remain
-#    populated; old-hash dirs are either gone or empty after Step 3.1 merge.
+# 5. split-hash ディレクトリが存在しない — 新 hash ディレクトリだけがデータを持ち、
+#    旧 hash dir は Step 3.1 の merge 後に消えているか空のはず。
 for h in "$HASH_V2" "$HASH_V1"; do
     [ "$h" = "$NEW_HASH" ] && continue
     src="$HOME/.claude/projects/$h"
@@ -351,7 +348,7 @@ for h in "$HASH_V2" "$HASH_V1"; do
     fi
 done
 
-# 6. IDE workspace storage points at NEW and chatSessions are visible
+# 6. IDE workspace storage が NEW を指し、chatSessions が見える
 for ide in Code Cursor; do
     base="$IDE_BASE/$ide/User/workspaceStorage"
     [ -d "$base" ] || continue
@@ -361,57 +358,57 @@ for ide in Code Cursor; do
     [ -d "$NEW_DIR/chatSessions" ] && echo "$ide chat sessions: $(ls "$NEW_DIR/chatSessions" | wc -l)"
 done
 
-# 7. no remnants of $OLD on the filesystem (full-migration invariant)
+# 7. ファイルシステム上に $OLD の残骸が無い (完全移行 invariant)
 [ -e "$OLD" ] && echo "FAIL: $OLD still exists (symlink or directory)"
 
-# 8. in-session: agent cwd resolves to $NEW
+# 8. in-session: agent cwd が $NEW に解決される
 cd "$NEW" && [ "$(realpath .)" = "$NEW" ] || echo "FAIL: cwd does not realpath to $NEW"
 ```
 
-A non-zero count from check 4 means Step 3.2 / 3.3 missed a file or another AI tool stores binary state; investigate before declaring success. A surviving entity at check 7 means Step 2's anti-pattern slipped back in. Failures at check 5 indicate a split between the v1 and v2 sanitize hashes that Step 3.1 did not merge.
+check 4 のカウントが非ゼロなら Step 3.2 / 3.3 がファイルを見落としているか、別の AI ツールがバイナリ状態を保存している。成功宣言の前に調査する。check 7 で残骸があれば Step 2 のアンチパターンが入り込んだ。check 5 の失敗は Step 3.1 がマージしなかった v1 / v2 sanitize hash の split を示す。
 
 ## Recovery (partial migration)
 
-Use this section when Phase 1 Discovery shows a project already in a partially-migrated state — typical signals:
+Phase 1 Discovery がプロジェクトの partial 移行状態を示したらこの section を使う。典型的な signal:
 
-- Filesystem move completed (`$NEW` exists) but `$OLD` is still present (symlink or dir fragment).
-- Multiple Claude hash directories hit (`$HASH_V1` and `$HASH_V2` both populated, or `$NEW_HASH` exists alongside `$HASH_V2`).
-- `grep -rlI -F "$OLD"` count is non-zero in any AI substrate even though the directory rename happened.
-- Same session UUID file appears in more than one hash directory.
-- IDE workspace storage exists at both OLD and NEW hashes for the same IDE.
+- ファイルシステム移動完了 (`$NEW` 存在) だが `$OLD` も残っている (symlink またはディレクトリ断片)。
+- Claude hash ディレクトリが複数ヒット (`$HASH_V1` と `$HASH_V2` が両方占有、または `$NEW_HASH` が `$HASH_V2` と並存)。
+- ディレクトリ rename はしたのに `grep -rlI -F "$OLD"` のカウントが任意の AI substrate で非ゼロ。
+- 同じ session UUID ファイルが複数の hash ディレクトリに現れる。
+- 同じ IDE で OLD と NEW の hash の両方に IDE workspace storage が存在。
 
-Recovery uses the same four phases but replaces Step 2's straight `mv` with a **merge**:
+Recovery は同じ 4 フェーズだが、Step 2 の straight `mv` を **merge** に置き換える。
 
-1. **Phase 1 Discovery (recovery mode)**: re-run Phase 1 in full so multi-hash hits and content counts are captured under the recovery branch. Take a fresh backup under `~/.ai-ops-relocation-backup/recovery-$(date +%Y%m%d-%H%M%S)/` — recovery's mutations are different from a clean migration's, so the backup must be distinct.
+1. **Phase 1 Discovery (recovery mode)**: Phase 1 を全部走らせ、multi-hash ヒットと content count を recovery branch 配下にキャプチャする。`~/.ai-ops-relocation-backup/recovery-$(date +%Y%m%d-%H%M%S)/` に新規バックアップを取る — recovery の mutation は clean migration と異なるので、バックアップは別ものでなければならない。
 
-2. **Phase 2 Plan**: the Brief explicitly enumerates every hash directory found, every fragment in `$OLD`, and the merge map per session UUID. Mark each entry as `keep`, `merge`, or `discard`.
+2. **Phase 2 Plan**: Brief は見つかった全 hash ディレクトリ、`$OLD` 内の全断片、session UUID ごとの merge map を明示列挙する。各エントリを `keep` / `merge` / `discard` のいずれかにマーク。
 
-3. **Step 1 (Recovery)**: clean up `$OLD` fragment if present. If `$OLD` is a back-symlink, remove it (no `mv` needed; `$NEW` already holds the data).
+3. **Step 1 (Recovery)**: `$OLD` 断片があればクリーンアップ。`$OLD` が back-symlink なら削除 (`mv` 不要。`$NEW` が既にデータを持つ)。
 
-4. **Step 2 (Recovery — merge instead of move)**: for each session UUID found in more than one hash directory, choose the canonical copy (largest size or newest mtime is a sane default), keep it under `$NEW_HASH/<uuid>.jsonl`, and rename siblings to `<uuid>-fragment-<source-hash-trimmed>.jsonl`. The `<source-hash-trimmed>` is `${source_hash#-}` — strip the leading `-` Claude prepends so the filename is `<uuid>-fragment-Users-foo-...jsonl`, not `<uuid>-fragment--Users-foo-...jsonl` (literal double-dash hurts readability and tooling that splits on `-`). Unique files copy directly into `$NEW_HASH/`.
+4. **Step 2 (Recovery — move ではなく merge)**: 複数の hash ディレクトリで見つかった session UUID ごとに、canonical コピーを選び (最大サイズか最新 mtime が妥当な default)、`$NEW_HASH/<uuid>.jsonl` に置き、兄弟を `<uuid>-fragment-<source-hash-trimmed>.jsonl` にリネーム。`<source-hash-trimmed>` は `${source_hash#-}` — Claude が前置する `-` を剥がし、ファイル名は `<uuid>-fragment-Users-foo-...jsonl` になるようにする (`<uuid>-fragment--Users-foo-...jsonl` のリテラル double-dash は可読性とハイフン分割のツールを傷める)。ユニークなファイルは `$NEW_HASH/` に直接コピーする。
 
-5. **Step 3 (Recovery)**: run Step 3.2 / 3.3 of the main flow against the merged `$NEW_DIR` and every text-based AI substrate. Binary stores (sqlite, leveldb) are left as-is; the OLD copy becomes the rollback artifact, the NEW copy continues fresh.
+5. **Step 3 (Recovery)**: メイン flow の Step 3.2 / 3.3 を merge 後の `$NEW_DIR` と全テキストベース AI substrate に対して走らせる。バイナリストア (sqlite、leveldb) は据え置き。OLD コピーがロールバック artifact、NEW コピーは fresh から続行。
 
-6. **Step 4 / 5**: identical to the main flow — re-init dev environment, copy IDE chat state from any surviving OLD workspace storage to NEW.
+6. **Step 4 / 5**: メイン flow と同一 — dev 環境再初期化、生き残った OLD ワークスペースストレージから NEW へ IDE チャット状態をコピー。
 
-7. **Phase 4 (Recovery)**: run all eight verifications. The same pass criteria apply: `grep -rlI -F "$OLD"` must be 0, no split hash dirs may carry data, `$OLD` must not exist as a path or symlink. Additionally confirm no `*-fragment-*.jsonl` survived without a corresponding canonical sibling.
+7. **Phase 4 (Recovery)**: 8 つの検証すべて走らせる。同じ pass 基準: `grep -rlI -F "$OLD"` は 0、split hash dirs はデータを持たない、`$OLD` は path / symlink として存在しない。加えて `*-fragment-*.jsonl` が対応する canonical 兄弟なしに残っていないことを確認。
 
-8. **Cleanup (with user approval)**: only after Phase 4 passes and the user reviews the `*-fragment-*.jsonl` set, delete the old hash directories. Recovery never deletes anything destructively without the user signing off — original substrate is the rollback.
+8. **Cleanup (使用者承認)**: Phase 4 が pass し、使用者が `*-fragment-*.jsonl` セットをレビューしてはじめて、旧 hash ディレクトリを削除する。Recovery は使用者の sign-off なしには破壊的削除を行わない — オリジナル substrate がロールバック手段。
 
 ## Rollback
 
-Step 3 mutated AI substrate in place; rollback restores from the Phase 1 backup.
+Step 3 は AI substrate を in-place で書き換えた。ロールバックは Phase 1 のバックアップから復元する。
 
 ```sh
 # directory move
 mv "$NEW" "$OLD"
-# AI substrate restore (use the Phase 1 backup; do NOT just rename)
+# AI substrate restore (Phase 1 のバックアップから。リネームではない)
 rm -rf "$HOME/.claude/projects/$NEW_HASH"
 [ -d "$BACKUP_ROOT/claude-projects" ] && cp -a "$BACKUP_ROOT/claude-projects" "$HOME/.claude/projects"
-# IDE workspace storage restore: revert each backed-up <hash> directory
+# IDE workspace storage restore: バックアップ済みの各 <hash> ディレクトリを巻き戻す
 for backup in "$BACKUP_ROOT"/Code-* "$BACKUP_ROOT"/Cursor-*; do
     [ -d "$backup" ] || continue
-    name=$(basename "$backup")           # e.g. Code-02b51147...
+    name=$(basename "$backup")           # 例: Code-02b51147...
     ide=${name%%-*}                      # Code | Cursor
     hash=${name#*-}                      # 02b51147...
     rm -rf "$IDE_BASE/$ide/User/workspaceStorage/$hash"
@@ -419,24 +416,24 @@ for backup in "$BACKUP_ROOT"/Code-* "$BACKUP_ROOT"/Cursor-*; do
 done
 ```
 
-Rollback for other AI tools is equivalent: restore from the backup made before Step 3.3. Git itself is path-agnostic; no remote operations are needed for rollback.
+他の AI ツールのロールバックも同等。Step 3.3 の前に取ったバックアップから復元する。Git 自身は path-agnostic なので、ロールバックにリモート操作は不要。
 
-## Constraints
+## 制約
 
-- Begin in committed state. A dirty `mv` can leave the working tree inconsistent.
-- Same-filesystem `mv` is atomic; cross-filesystem requires explicit copy → verify → delete.
-- Each Step is its own approval. AI data substrate rename + content rewrite (Step 3) and IDE workspace storage migration (Step 5) are explicitly listed in AGENTS.md §Operation Model.
-- A pre-existing symlink at the target path must be removed before `mv` (macOS overwrites the symlink itself, not its target).
-- **No back-symlink at `$OLD`** for full migration (Step 2). The narrow transition exception is the only acceptable variant and must come with an explicit removal step in the Brief.
-- **Content rewrite is mandatory** when AI session storage is text-based (Step 3.2 / 3.3). Directory rename alone is not full migration.
-- **Phase 4 grep must report 0** for every storage location with text-based session data. Non-zero means a missed location.
-- **Hash candidates must enumerate v1 + v2 sanitize rules** (and any future variants). A single-rule Discovery silently misses split-hash drift.
-- **In-session migration prefers terminal restart**; only orchestrate inline transition when terminal restart is impossible.
-- **Recovery's destructive cleanup requires user approval per fragment.** Original substrate is the rollback artifact.
+- commit 済み状態で開始する。dirty な `mv` は作業ツリーを inconsistent にしうる。
+- 同一ファイルシステム間の `mv` は atomic。ファイルシステム跨ぎは明示的な copy → verify → delete が必要。
+- 各 Step は独自の承認。AI data substrate rename + content rewrite (Step 3) と IDE workspace storage migration (Step 5) は AGENTS.md §Operation Model に明示列挙されている。
+- 目的地 path に既存の symlink がある場合、`mv` 前に削除する (macOS は symlink 自身を上書きし、その target ではない)。
+- 完全移行では **`$OLD` に back-symlink なし** (Step 2)。狭い transition 例外のみ許容。Brief に明示的な削除 step が伴わなければならない。
+- AI セッションストレージがテキストベースなら **content rewrite は必須** (Step 3.2 / 3.3)。ディレクトリ rename だけでは完全移行ではない。
+- テキストベースのセッションデータを持つ全ストレージ位置に対して **Phase 4 grep は 0 を報告しなければならない**。非ゼロは見逃した位置あり。
+- **Hash 候補は v1 + v2 sanitize ルール (および将来の variant) を列挙する**。単一ルールの Discovery は split-hash drift を silently 見落とす。
+- **In-session migration はターミナル再起動を優先する**。inline transition のオーケストレーションは、ターミナル再起動が不可能な場合のみ。
+- **Recovery の破壊的クリーンアップは fragment ごとに使用者承認が必要**。オリジナル substrate がロールバック artifact。
 
-## See Also
+## 関連
 
-- `AGENTS.md` §Workspace — `~/ghq/` is canonical
+- `AGENTS.md` §Workspace — `~/ghq/` が canonical
 - `AGENTS.md` §Operation Model — Propose → Confirm → Execute
-- `docs/realignment.md` — how `align this project` reaches this playbook
-- `docs/project-addition-and-migration.md` — Tier promotion path moves
+- `docs/realignment.md` — `align this project` がこの playbook に到達するルート
+- `docs/project-addition-and-migration.md` — Tier 昇格 path 移動
