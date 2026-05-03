@@ -566,6 +566,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--provider", default="auto", choices=("auto", "anthropic", "openai"),
         help="LLM provider to use (default: auto = ANTHROPIC > OPENAI by env var)",
     )
+    review.add_argument(
+        "--model", default=None,
+        help="Model name to use, or 'auto' for heuristic (PR ζ): "
+             "diff size + label drives haiku/sonnet/opus selection. "
+             "Default: harness.toml [review].default_model > built-in (sonnet)",
+    )
     review.add_argument("--dry-run", action="store_true")
     review.set_defaults(handler=handle_review_pr)
 
@@ -851,6 +857,7 @@ def handle_review_pr(args: argparse.Namespace, root: Path) -> int:
         repo=args.repo,
         dry_run=args.dry_run,
         provider=args.provider,
+        model=args.model,
         cwd=root,
     )
 

@@ -119,36 +119,167 @@ def _append_cost_entry(
         pass
 
 
-def _read_monthly_budget_usd(cwd: Path) -> float | None:
-    """`harness.toml::[review_budget].monthly_usd_limit` または env var から読む。
+@dataclass
+class ReviewConfig:
+    """`.ai-ops/harness.toml::[review]` (PR ζ) を解釈した設定。
 
-    優先: env var `AI_OPS_REVIEW_BUDGET_USD_MONTH` > harness.toml > None。
-    None は cap 無し (default 挙動)。
+    Backward compat: `[review_budget]` (PR ε) も読み、`[review]` が無ければ
+    `[review_budget].monthly_usd_limit` を `monthly_usd_limit` として merge。
     """
-    env_val = os.environ.get("AI_OPS_REVIEW_BUDGET_USD_MONTH")
-    if env_val:
+
+    enabled: bool = True
+    monthly_usd_limit: float | None = None
+    per_pr_usd_limit: float | None = None
+    default_model: str | None = None
+    skip_label_patterns: tuple[str, ...] = ()
+    skip_path_patterns: tuple[str, ...] = ()
+    on_label: str | None = None  # CI が trigger 用に見るラベル名
+
+
+def _load_review_config(cwd: Path) -> ReviewConfig:
+    """`.ai-ops/harness.toml` から `[review]` を読み、env var で上書きする。
+
+    優先: env var > `[review]` > `[review_budget]` (legacy) > default。
+    """
+    cfg = ReviewConfig()
+    manifest = cwd / ".ai-ops" / "harness.toml"
+    if manifest.is_file():
         try:
-            return float(env_val)
+            text = manifest.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            text = ""
+        import re as _re
+        # legacy [review_budget] (PR ε)
+        m_legacy = _re.search(
+            r"\[review_budget\][^\[]*?monthly_usd_limit\s*=\s*([\d.]+)",
+            text, flags=_re.DOTALL,
+        )
+        if m_legacy:
+            try:
+                cfg.monthly_usd_limit = float(m_legacy.group(1))
+            except ValueError:
+                pass
+        # new [review] (PR ζ) — overrides legacy if present.
+        # `(?=\n\[|\Z)` で「次の section header (改行 + `[`) または EOF」まで。
+        # list value 内の `[` を block 終端と誤認しないため `[^\[]*` を使わない。
+        m_review = _re.search(r"\[review\][^\n]*\n([\s\S]*?)(?=\n\[|\Z)", text)
+        if m_review:
+            block = m_review.group(1)
+            cfg.enabled = _parse_bool(block, "enabled", default=True)
+            cfg.monthly_usd_limit = _parse_float(block, "monthly_usd_limit",
+                                                  default=cfg.monthly_usd_limit)
+            cfg.per_pr_usd_limit = _parse_float(block, "per_pr_usd_limit", default=None)
+            cfg.default_model = _parse_str(block, "default_model", default=None)
+            cfg.skip_label_patterns = tuple(_parse_str_list(block, "skip_label_patterns"))
+            cfg.skip_path_patterns = tuple(_parse_str_list(block, "skip_path_patterns"))
+            cfg.on_label = _parse_str(block, "on_label", default=None)
+    # env override
+    env_monthly = os.environ.get("AI_OPS_REVIEW_BUDGET_USD_MONTH")
+    if env_monthly:
+        try:
+            cfg.monthly_usd_limit = float(env_monthly)
         except ValueError:
             pass
-    manifest = cwd / ".ai-ops" / "harness.toml"
-    if not manifest.is_file():
-        return None
-    try:
-        text = manifest.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        return None
+    env_enabled = os.environ.get("AI_OPS_REVIEW_ENABLED")
+    if env_enabled is not None:
+        cfg.enabled = env_enabled.lower() in ("1", "true", "yes", "on")
+    return cfg
+
+
+def _parse_bool(block: str, key: str, *, default: bool) -> bool:
     import re as _re
-    match = _re.search(
-        r"\[review_budget\][^\[]*?monthly_usd_limit\s*=\s*([\d.]+)",
-        text, flags=_re.DOTALL,
-    )
-    if match:
-        try:
-            return float(match.group(1))
-        except ValueError:
-            return None
+    m = _re.search(rf"^\s*{_re.escape(key)}\s*=\s*(true|false)\s*$", block, flags=_re.MULTILINE)
+    if not m:
+        return default
+    return m.group(1) == "true"
+
+
+def _parse_float(block: str, key: str, *, default: float | None) -> float | None:
+    import re as _re
+    m = _re.search(rf"^\s*{_re.escape(key)}\s*=\s*([\d.]+)\s*$", block, flags=_re.MULTILINE)
+    if not m:
+        return default
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return default
+
+
+def _parse_str(block: str, key: str, *, default: str | None) -> str | None:
+    import re as _re
+    m = _re.search(rf'^\s*{_re.escape(key)}\s*=\s*"([^"]*)"\s*$', block, flags=_re.MULTILINE)
+    if not m:
+        return default
+    return m.group(1)
+
+
+def _parse_str_list(block: str, key: str) -> list[str]:
+    import re as _re
+    m = _re.search(rf"^\s*{_re.escape(key)}\s*=\s*\[(.*?)\]", block, flags=_re.DOTALL | _re.MULTILINE)
+    if not m:
+        return []
+    raw = m.group(1)
+    items = _re.findall(r'"([^"]*)"', raw)
+    return items
+
+
+def _read_monthly_budget_usd(cwd: Path) -> float | None:
+    """Backward-compat shim: `_load_review_config(cwd).monthly_usd_limit` を返す。"""
+    return _load_review_config(cwd).monthly_usd_limit
+
+
+def _check_skip_patterns(
+    pr_labels: list[str],
+    diff_files: list[str],
+    config: ReviewConfig,
+) -> str | None:
+    """skip_label_patterns / skip_path_patterns に match すれば理由文字列を返す。
+    None なら skip しない。
+
+    Path pattern は `pathlib.PurePath.match` (glob `**` 対応) を使う。
+    label pattern は `fnmatch` (label に path 区切りは無い)。
+    """
+    import fnmatch
+    from pathlib import PurePath
+    for pat in config.skip_label_patterns:
+        for label in pr_labels:
+            if fnmatch.fnmatch(label, pat):
+                return f"skip due to label pattern '{pat}' matched label '{label}'"
+    if config.skip_path_patterns and diff_files:
+        def matches_any(file_path: str) -> bool:
+            p = PurePath(file_path)
+            for pat in config.skip_path_patterns:
+                # PurePath.match は `**/*.lock` など glob `**` を理解する
+                if p.match(pat):
+                    return True
+                # `**/*.lock` を root 直下にも match させる (PurePath.match は `**/*.lock` で
+                # `flake.lock` に match しないことがある)
+                if "**" in pat and p.match(pat.replace("**/", "", 1)):
+                    return True
+            return False
+        non_skipped = [f for f in diff_files if not matches_any(f)]
+        if not non_skipped:
+            return f"skip: all changed files match skip_path_patterns ({', '.join(config.skip_path_patterns[:3])})"
     return None
+
+
+def _choose_model_auto(
+    pr_labels: list[str],
+    diff_size_lines: int,
+    config: ReviewConfig,
+) -> str:
+    """`--model auto` の heuristic。
+
+    - "security" / "critical" label or diff > 5000 lines → opus
+    - "docs" / "style" / "chore" label and diff < 500 lines → haiku
+    - それ以外 → sonnet (or config.default_model)
+    """
+    label_set = {l.lower() for l in pr_labels}
+    if "security" in label_set or "critical" in label_set or diff_size_lines > 5000:
+        return "claude-opus-4-7"
+    if (label_set & {"docs", "style", "chore"}) and diff_size_lines < 500:
+        return "claude-haiku-4-5-20251001"
+    return config.default_model or "claude-sonnet-4-6"
 
 
 def run_review_cost(month: str | None = None) -> int:
@@ -510,7 +641,33 @@ def review_with_llm(
     ctx: PRContext,
     provider: Literal["anthropic", "openai", "auto"] = "auto",
     cwd: Path | None = None,
+    model_override: str | None = None,
+    pr_labels: list[str] | None = None,
 ) -> ReviewResult:
+    config = _load_review_config(cwd or Path.cwd())
+    pr_labels = pr_labels or []
+
+    # PR ζ: master switch
+    if not config.enabled:
+        return ReviewResult(
+            state="neutral",
+            summary="ai-ops review disabled by [review].enabled = false",
+            body=(
+                "`ai-ops review-pr` is disabled for this project (set "
+                "`[review].enabled = false` in `.ai-ops/harness.toml`)."
+            ),
+        )
+
+    # PR ζ: skip patterns (label / path)
+    diff_files = _extract_diff_paths(ctx.diff)
+    skip_reason = _check_skip_patterns(pr_labels, diff_files, config)
+    if skip_reason:
+        return ReviewResult(
+            state="neutral",
+            summary=f"ai-ops review skipped ({skip_reason})",
+            body=f"`ai-ops review-pr` skipped: {skip_reason}",
+        )
+
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
     chosen: Literal["anthropic", "openai"] | None
@@ -531,34 +688,58 @@ def review_with_llm(
                 "`OPENAI_API_KEY` is set. Configure either secret to enable AI review."
             ),
         )
-    # PR ε: monthly budget cap. 累計 USD が `monthly_usd_limit` を超えていたら
-    # neutral skip。default は cap 無し (既存挙動を壊さない)。
-    budget = _read_monthly_budget_usd(cwd or Path.cwd())
-    if budget is not None:
+    # PR ε: monthly budget cap.
+    if config.monthly_usd_limit is not None:
         spent = _read_monthly_total_usd()
-        if spent >= budget:
+        if spent >= config.monthly_usd_limit:
             return ReviewResult(
                 state="neutral",
-                summary=f"ai-ops review skipped (budget exceeded: ${spent:.4f} ≥ ${budget:.4f})",
+                summary=f"ai-ops review skipped (monthly budget exceeded: ${spent:.4f} ≥ ${config.monthly_usd_limit:.4f})",
                 body=(
                     f"`ai-ops review-pr` skipped this PR because the monthly review "
-                    f"budget is reached: spent ${spent:.4f} of ${budget:.4f} cap "
-                    f"(set via `[review_budget].monthly_usd_limit` in `.ai-ops/harness.toml` "
+                    f"budget is reached: spent ${spent:.4f} of ${config.monthly_usd_limit:.4f} cap "
+                    f"(set via `[review].monthly_usd_limit` in `.ai-ops/harness.toml` "
                     f"or `AI_OPS_REVIEW_BUDGET_USD_MONTH` env var)."
                 ),
             )
     user_prompt = _format_user_prompt(ctx)
     raw: str | None
     input_tokens = output_tokens = 0
+    # PR ζ: model selection — explicit override > auto heuristic > config default > built-in default
+    diff_lines = ctx.diff.count("\n") if ctx.diff else 0
+    if model_override and model_override != "auto":
+        chosen_model = model_override
+    elif model_override == "auto":
+        chosen_model = _choose_model_auto(pr_labels, diff_lines, config)
+    elif config.default_model:
+        chosen_model = config.default_model
+    else:
+        chosen_model = None  # provider 別 default を使う
     if chosen == "anthropic":
-        model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        model = chosen_model or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        # Anthropic 系の値かを軽く check (gpt-* を anthropic に渡したらエラーになる)
+        if model.startswith("gpt-"):
+            model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
         raw, input_tokens, output_tokens = _call_anthropic(
             model, REVIEW_SYSTEM_PROMPT, user_prompt, anthropic_key or "",
         )
     else:
-        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        model = chosen_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        if model.startswith("claude-"):
+            model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         raw, input_tokens, output_tokens = _call_openai(
             model, REVIEW_SYSTEM_PROMPT, user_prompt, openai_key or "",
+        )
+
+    # PR ζ: per-PR cap (LLM call 後に判定 — 値が cap を超えたら post する Comment に明記、
+    # ただし cost 自体は既に発生しているので skip にはしない。次回の cap 設定見直しを促す)
+    cost = _estimate_cost_usd(model, input_tokens, output_tokens)
+    per_pr_warning = ""
+    if cost is not None and config.per_pr_usd_limit is not None and cost > config.per_pr_usd_limit:
+        per_pr_warning = (
+            f"\n\n> ⚠️ This PR's review cost (${cost:.4f}) exceeded the configured "
+            f"per-PR cap (${config.per_pr_usd_limit:.4f}). Consider lowering the model "
+            f"or splitting the PR."
         )
     if not raw:
         return ReviewResult(
@@ -567,16 +748,39 @@ def review_with_llm(
             body="LLM call returned no content. See workflow logs for details.",
         )
     result = _parse_llm_response(raw)
-    # Comment 末尾に cost footer を貼る (使用量 + 推定 USD)
+    # Comment 末尾に cost footer を貼る (使用量 + 推定 USD + per-PR warning)
     footer = _format_cost_footer(model, input_tokens, output_tokens)
     # PR ε: 月次キャッシュに記録 (CR3 の closure)
-    cost = _estimate_cost_usd(model, input_tokens, output_tokens)
     _append_cost_entry(ctx.repo, ctx.number, model, input_tokens, output_tokens, cost)
     return ReviewResult(
         state=result.state,
         summary=result.summary,
-        body=f"{result.body}\n\n{footer}",
+        body=f"{result.body}\n\n{footer}{per_pr_warning}",
     )
+
+
+def _extract_diff_paths(diff: str) -> list[str]:
+    """`git diff` 出力から変更ファイル path を抽出する (`+++ b/<path>` 行)。"""
+    if not diff:
+        return []
+    import re as _re
+    paths: list[str] = []
+    for match in _re.finditer(r"^\+\+\+ b/(.+)$", diff, flags=_re.MULTILINE):
+        paths.append(match.group(1))
+    return paths
+
+
+def _fetch_pr_labels(repo: str, pr: int) -> list[str]:
+    """PR の label 名一覧を取得 (`gh pr view --json labels`)。失敗時は空リスト。"""
+    result = _gh([
+        "pr", "view", str(pr),
+        "--repo", repo,
+        "--json", "labels",
+        "-q", ".labels[].name",
+    ])
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def _parse_llm_response(raw: str) -> ReviewResult:
@@ -659,6 +863,7 @@ def run_review_pr(
     repo: str | None = None,
     dry_run: bool = False,
     provider: Literal["anthropic", "openai", "auto"] = "auto",
+    model: str | None = None,
     cwd: Path | None = None,
 ) -> int:
     if not _gh_available():
@@ -680,7 +885,11 @@ def run_review_pr(
     print(f"  context gathered: AGENTS.md={len(ctx.agents_md)} bytes, "
           f"ADRs={len(ctx.adrs)}, plan={'yes' if ctx.plan_md else 'no'}, "
           f"diff={len(ctx.diff)} bytes")
-    result = review_with_llm(ctx, provider=provider, cwd=work_dir)
+    pr_labels = _fetch_pr_labels(target_repo, pr)
+    result = review_with_llm(
+        ctx, provider=provider, cwd=work_dir,
+        model_override=model, pr_labels=pr_labels,
+    )
     print(f"  result: state={result.state}  summary={result.summary}")
     if dry_run:
         print("  --dry-run: skipping Comment / status check post")

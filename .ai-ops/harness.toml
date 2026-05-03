@@ -9,6 +9,18 @@ ai_ops_sha = "f3c7f09957748c664b79ead21fbb6bb8fef86f35"
 last_sync = "2026-05-02T16:05:00+00:00"
 workflow_tier = "A"
 
+# PR ζ: 3-layer review config. ai-ops は Tier A (本人が AI エージェントに直接指示)
+# なので、CI external review は label `review:request` 付与時のみ走る。
+# self-review が常に走る前提。コスト保険として monthly + per-PR cap を設定。
+[review]
+enabled = true
+monthly_usd_limit = 2.0
+per_pr_usd_limit = 0.15
+default_model = "claude-sonnet-4-6"
+skip_label_patterns = ["no-review", "skip-ai", "review:skip"]
+skip_path_patterns = ["docs/plans/archive/**", "**/*.lock"]
+on_label = "review:request"
+
 [harness_files]
 "AGENTS.md" = "d3c56745d7121353c613ab320f8cad50edba41cc3dfcd8c747dfb644c1d059ae"
 ".envrc" = "c5bf3b90a9da8d0453a18bb43e94f2f64544e4fd1f649053e5cbeb5d74aa7ee1"

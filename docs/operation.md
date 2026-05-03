@@ -38,11 +38,13 @@ Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Ve
    → ④ ai-ops worktree new <slug>
    → ⑤ 作業 + plan を living document として更新
    → ⑥ ai-ops check (lifecycle / harness / security / nix / pytest)
-   → ⑦ commit + gh pr create
-   → ⑧ CI 待ち (managed-project-check.yml)
-   → ⑨ AI レビュー待ち (Copilot + ai-ops review-pr)
-   → ⑩ ★Tier C なら人間レビュー待ち
-   → ⑪ merge → ⑫ archive (Tier 別) → ⑬ ai-ops worktree cleanup → ⑭ 完了報告
+   → ⑦ Self-review (必須): エージェント自身が変更を読み返し規約遵守を確認
+   → ⑧ External review 判断 (条件付き、ADR 0012 amended PR ζ):
+        セカンドオピニオン要なら `ai-ops review-pr --pr <N> [--model auto|haiku|sonnet|opus]`
+   → ⑨ commit + gh pr create (PR 説明に Self-review 結果を含める、必要なら label `review:request`)
+   → ⑩ CI 待ち (managed-project-check.yml = audit、設定により managed-project-review.yml = second opinion)
+   → ⑪ ★Tier C なら人間レビュー待ち
+   → ⑫ merge → ⑬ archive (Tier 別) → ⑭ ai-ops worktree cleanup → 使用者へ完了報告
 
 [並行: ai-ops repo の scheduled cron]
  ecosystem-watch.yml (週次) — drift → Issue / sub-issue
@@ -53,10 +55,35 @@ Intake → Discovery → Brief → Proposal → Confirm → Agent Execute → Ve
 **人間が介入する 3 点**:
 
 1. **Confirm** (③) — Brief 後の destructive / 環境 / 視認性 / 横断的操作の承認
-2. **Tier C 最終レビュー** (⑩) — CODEOWNERS + ruleset で強制
+2. **Tier C 最終レビュー** (⑪) — CODEOWNERS + ruleset で強制
 3. **AI レビュー request changes 時の対処** — 続行 / 修正 / override の判断
 
 これら以外 (branch 命名、worktree 作成、plan 更新、PR 起票、archive、cleanup、伝播) は AI エージェントまたは scheduled cron が自律実行する。
+
+### 3 層レビュー (PR ζ で再設計、ADR 0012 amended)
+
+| Layer | 主体 | コスト | 強制度 | 判断者 |
+|---|---|---|---|---|
+| **Self-review** (⑦) | 作業中のエージェント (context 完全) | 0 | 必須 | エージェント |
+| **External review** (⑧) | `ai-ops review-pr` (LLM API、context 限定) | $0.005-0.10/PR | 判断 | エージェントが「セカンドオピニオン要」と判断したら呼ぶ |
+| **Human review** (⑪) | 使用者本人 (Tier C 必須、CODEOWNERS) | 0 | Tier C 強制、他は任意 | 使用者 |
+
+External review を **呼ぶべき heuristics**: propagate / setup / 横断的編集、Tier B+ プロジェクト、セキュリティ / secret 関連、自信が低い (Brief で Risk として挙がった事項を含む) 変更。
+
+**呼ばないで OK な heuristics**: docs only / typo fix、自分の Brief 内で完結する単純な変更、test / refactor で挙動が変わらないもの。
+
+CI workflow は role を変えた: ai-ops 自身と Tier A プロジェクトの review は label `review:request` で trigger (default off)、Tier B は default on (label `review:skip` で個別 opt-out 可)、Tier C は強制。設定は `.ai-ops/harness.toml::[review]` で:
+
+```toml
+[review]
+enabled = true                      # master switch
+monthly_usd_limit = 2.0
+per_pr_usd_limit = 0.15
+default_model = "claude-sonnet-4-6"  # auto なら heuristic で haiku/sonnet/opus
+skip_label_patterns = ["no-review", "skip-ai", "review:skip"]
+skip_path_patterns = ["**/*.lock", "docs/plans/archive/**"]
+on_label = "review:request"
+```
 
 ### secret 扱い
 
