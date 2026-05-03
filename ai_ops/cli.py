@@ -28,11 +28,12 @@ from ai_ops.propagate import (
     run_propagate_init,
 )
 from ai_ops.report import run_report_drift
-from ai_ops.review import run_review_pr
+from ai_ops.review import run_review_cost, run_review_pr
 from ai_ops.setup import (
     VALID_TIERS,
     run_setup_ci_workflow,
     run_setup_codeowners,
+    run_setup_ecosystem,
     run_setup_ruleset,
 )
 from ai_ops.worktree import (
@@ -470,6 +471,25 @@ def build_parser() -> argparse.ArgumentParser:
     su_rs.add_argument("--dry-run", action="store_true")
     su_rs.set_defaults(handler=handle_setup_ruleset)
 
+    su_eco = su_sub.add_parser(
+        "ecosystem",
+        help="Create the Ecosystem dashboard parent issue for a project (PR ε, ADR 0011)",
+    )
+    su_eco.add_argument(
+        "--project-name", required=True,
+        help="Project slug as it should appear in 'Ecosystem: <name>' issue title",
+    )
+    su_eco.add_argument(
+        "--ai-ops-repo", dest="ai_ops_repo", default="tekitounix/ai-ops",
+        help="ai-ops repo (owner/name) hosting the dashboard (default: tekitounix/ai-ops)",
+    )
+    su_eco.add_argument(
+        "--owner", default=None,
+        help="Optional GitHub username to assign as parent-issue owner",
+    )
+    su_eco.add_argument("--dry-run", action="store_true")
+    su_eco.set_defaults(handler=handle_setup_ecosystem)
+
     # --- 旧 alias (1 リリース猶予、deprecation 警告付き) ---
     setup_ci = sub.add_parser(
         "setup-ci-workflow",
@@ -519,6 +539,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setup_rs.add_argument("--dry-run", action="store_true")
     setup_rs.set_defaults(handler=handle_setup_ruleset)
+
+    review_cost = sub.add_parser(
+        "review-cost",
+        help="Show monthly LLM-review cost summary from local cache (PR ε)",
+    )
+    review_cost.add_argument(
+        "--month", default=None,
+        help="Month to summarize as YYYY-MM (default: current month UTC)",
+    )
+    review_cost.set_defaults(handler=handle_review_cost)
 
     review = sub.add_parser(
         "review-pr",
@@ -806,6 +836,15 @@ def handle_setup_ruleset(args: argparse.Namespace, root: Path) -> int:
     )
 
 
+def handle_setup_ecosystem(args: argparse.Namespace, root: Path) -> int:
+    return run_setup_ecosystem(
+        project_name=args.project_name,
+        ai_ops_repo=args.ai_ops_repo,
+        owner=args.owner,
+        dry_run=args.dry_run,
+    )
+
+
 def handle_review_pr(args: argparse.Namespace, root: Path) -> int:
     return run_review_pr(
         pr=args.pr,
@@ -814,6 +853,10 @@ def handle_review_pr(args: argparse.Namespace, root: Path) -> int:
         provider=args.provider,
         cwd=root,
     )
+
+
+def handle_review_cost(args: argparse.Namespace, root: Path) -> int:
+    return run_review_cost(month=args.month)
 
 
 def resolve_agent(root: Path, override: str | None):

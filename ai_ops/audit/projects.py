@@ -814,6 +814,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         ("prs", 3),
         ("rsy", 3),
         ("tier", 4),
+        ("rec", 3),
         ("tv", 3),
         ("pri", 3),
         ("sub-flow", 9),
@@ -838,6 +839,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
         else:
             rsy = "-"
         tier = s.workflow_tier or "D"
+        rec = s.recommended_tier or "-"
         tv = str(len(s.tier_violations))
         row = (
             f"{proj:<28} "
@@ -853,6 +855,7 @@ def _print_table(signals_list: list[ProjectSignals]) -> None:
             f"{prs:>3} "
             f"{rsy:<3} "
             f"{tier:<4} "
+            f"{rec:<3} "
             f"{tv:>3} "
             f"{s.priority:<3} "
             f"{s.sub_flow:<9}"

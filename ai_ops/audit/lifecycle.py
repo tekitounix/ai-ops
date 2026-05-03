@@ -420,6 +420,13 @@ def _check_deprecated_alias_in_active_docs(root: Path) -> list[str]:
                 targets.append(path)
             elif path.name in ("pre-push", ".envrc"):
                 targets.append(path)
+    # PR ε: scheduled workflow も scan 対象 (旧 alias の silent な残存を防ぐ)。
+    workflows_dir = root / ".github" / "workflows"
+    if workflows_dir.is_dir():
+        for path in sorted(workflows_dir.glob("*.yml")):
+            targets.append(path)
+        for path in sorted(workflows_dir.glob("*.yaml")):
+            targets.append(path)
     for path in targets:
         try:
             text = path.read_text(encoding="utf-8")

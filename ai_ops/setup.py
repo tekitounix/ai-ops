@@ -364,3 +364,97 @@ def run_setup_ruleset(
         new_id = "?"
     print(f"OK: created ruleset '{name}' (#{new_id}) on {repo}")
     return 0
+
+
+# ─────────────────────────────────────────────────────
+# setup-ecosystem (PR ε, ADR 0011 closure)
+# ─────────────────────────────────────────────────────
+
+
+ECOSYSTEM_LABEL = "ecosystem"
+DRIFT_LABEL = "ai-ops:drift"
+
+
+def run_setup_ecosystem(
+    *,
+    project_name: str,
+    ai_ops_repo: str = "tekitounix/ai-ops",
+    owner: str | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Create an Ecosystem dashboard parent issue for `project_name` in
+    `ai_ops_repo` if one does not yet exist (ADR 0011 §Move 1).
+
+    Without this, `report-drift` (run by ecosystem-watch.yml) will WARN
+    forever and never open sub-issues. PR ε closes this loop.
+    """
+    if not _ensure_gh():
+        return 1
+
+    title = f"Ecosystem: {project_name}"
+
+    # Look up existing parent issue first (label + title match).
+    existing = _gh([
+        "issue", "list",
+        "--repo", ai_ops_repo,
+        "--label", ECOSYSTEM_LABEL,
+        "--state", "open",
+        "--search", f"in:title {project_name}",
+        "--json", "number,title",
+    ])
+    if existing.returncode == 0 and existing.stdout.strip():
+        try:
+            items = json.loads(existing.stdout)
+        except json.JSONDecodeError:
+            items = []
+        for item in items:
+            if title in item.get("title", ""):
+                print(f"OK: parent issue already exists: #{item['number']} ({title})")
+                return 0
+
+    body_lines = [
+        f"# Ecosystem dashboard: {project_name}",
+        "",
+        "This is the parent issue tracking ai-ops drift signals for "
+        f"`{project_name}`. Sub-issues are opened / updated / closed "
+        "automatically by `ai-ops report-drift` (driven by the "
+        "scheduled `ecosystem-watch.yml` workflow).",
+        "",
+        f"- Label: `{ECOSYSTEM_LABEL}`",
+        "- Sub-issue lifecycle: opened on new drift, body updated on "
+        "state change, closed when drift resolves.",
+    ]
+    if owner:
+        body_lines.extend(["", f"Owner: @{owner}"])
+    body = "\n".join(body_lines)
+
+    if dry_run:
+        print(f"[dry-run] would create parent issue '{title}' on {ai_ops_repo}")
+        return 0
+
+    # Ensure label exists (idempotent: --force).
+    _gh([
+        "label", "create", ECOSYSTEM_LABEL,
+        "--repo", ai_ops_repo,
+        "--description", "ai-ops Ecosystem dashboard parent / sub issue",
+        "--color", "0E8A16",
+        "--force",
+    ])
+
+    create_args = [
+        "issue", "create",
+        "--repo", ai_ops_repo,
+        "--title", title,
+        "--label", ECOSYSTEM_LABEL,
+        "--body", body,
+    ]
+    if owner:
+        create_args.extend(["--assignee", owner])
+    create = _gh(create_args)
+    if create.returncode != 0:
+        print(f"FAIL: gh issue create failed: {create.stderr.strip()}",
+              file=sys.stderr)
+        return 1
+    print(f"OK: created parent issue for '{project_name}' on {ai_ops_repo}")
+    print(create.stdout.strip())
+    return 0

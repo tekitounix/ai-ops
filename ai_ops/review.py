@@ -68,6 +68,135 @@ def _format_cost_footer(
     )
 
 
+# ---------- monthly cost cap + cache (PR ε, CR3) ----------
+
+
+def _cost_cache_path(month: str | None = None) -> Path:
+    """`~/.cache/ai-ops/review-cost-YYYY-MM.json` の path を返す。"""
+    from datetime import datetime, timezone
+    if month is None:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return Path.home() / ".cache" / "ai-ops" / f"review-cost-{month}.json"
+
+
+def _read_monthly_total_usd(month: str | None = None) -> float:
+    """月次累計 USD を返す (キャッシュが無ければ 0)。"""
+    path = _cost_cache_path(month)
+    if not path.is_file():
+        return 0.0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0.0
+    entries = data.get("entries", [])
+    return sum(float(e.get("cost_usd", 0.0)) for e in entries)
+
+
+def _append_cost_entry(
+    repo: str, pr: int, model: str,
+    input_tokens: int, output_tokens: int, cost_usd: float | None,
+) -> None:
+    """月次キャッシュに 1 entry 追記する (best-effort)。"""
+    from datetime import datetime, timezone
+    path = _cost_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"entries": []}
+    except (OSError, json.JSONDecodeError):
+        data = {"entries": []}
+    data.setdefault("entries", []).append({
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "repo": repo,
+        "pr": pr,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost_usd if cost_usd is not None else 0.0,
+    })
+    try:
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _read_monthly_budget_usd(cwd: Path) -> float | None:
+    """`harness.toml::[review_budget].monthly_usd_limit` または env var から読む。
+
+    優先: env var `AI_OPS_REVIEW_BUDGET_USD_MONTH` > harness.toml > None。
+    None は cap 無し (default 挙動)。
+    """
+    env_val = os.environ.get("AI_OPS_REVIEW_BUDGET_USD_MONTH")
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    manifest = cwd / ".ai-ops" / "harness.toml"
+    if not manifest.is_file():
+        return None
+    try:
+        text = manifest.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+    import re as _re
+    match = _re.search(
+        r"\[review_budget\][^\[]*?monthly_usd_limit\s*=\s*([\d.]+)",
+        text, flags=_re.DOTALL,
+    )
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def run_review_cost(month: str | None = None) -> int:
+    """月次レビューコストを表で出力する (PR ε)。
+
+    `--month YYYY-MM` で指定可。default は当月。
+    """
+    from datetime import datetime, timezone
+    if month is None:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+    path = _cost_cache_path(month)
+    print(f"==> ai-ops review cost summary ({month})")
+    print(f"  cache: {path}")
+    if not path.is_file():
+        print("  (no entries yet)")
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  ERROR: cache unreadable ({exc})", file=sys.stderr)
+        return 1
+    entries = data.get("entries", [])
+    if not entries:
+        print("  (no entries)")
+        return 0
+    # repo + model 単位で集計
+    by_repo: dict[str, dict[str, float | int]] = {}
+    for e in entries:
+        repo = e.get("repo", "?")
+        agg = by_repo.setdefault(repo, {"count": 0, "input": 0, "output": 0, "cost": 0.0})
+        agg["count"] = int(agg["count"]) + 1
+        agg["input"] = int(agg["input"]) + int(e.get("input_tokens", 0))
+        agg["output"] = int(agg["output"]) + int(e.get("output_tokens", 0))
+        agg["cost"] = float(agg["cost"]) + float(e.get("cost_usd", 0.0))
+    total_cost = sum(float(v["cost"]) for v in by_repo.values())
+    total_count = sum(int(v["count"]) for v in by_repo.values())
+    print(f"  reviews: {total_count}, total estimated cost: ${total_cost:.4f}")
+    print()
+    print(f"  {'repo':<35} {'count':>6} {'input tok':>12} {'output tok':>12} {'cost USD':>10}")
+    for repo in sorted(by_repo.keys()):
+        v = by_repo[repo]
+        print(
+            f"  {repo[:34]:<35} {int(v['count']):>6} {int(v['input']):>12,} "
+            f"{int(v['output']):>12,} ${float(v['cost']):>9.4f}"
+        )
+    return 0
+
+
 # ---------- 外部呼び出しのためのプリミティブ (テストは monkeypatch で差し替え) ----------
 
 
@@ -380,6 +509,7 @@ def _format_user_prompt(ctx: PRContext) -> str:
 def review_with_llm(
     ctx: PRContext,
     provider: Literal["anthropic", "openai", "auto"] = "auto",
+    cwd: Path | None = None,
 ) -> ReviewResult:
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
@@ -401,6 +531,22 @@ def review_with_llm(
                 "`OPENAI_API_KEY` is set. Configure either secret to enable AI review."
             ),
         )
+    # PR ε: monthly budget cap. 累計 USD が `monthly_usd_limit` を超えていたら
+    # neutral skip。default は cap 無し (既存挙動を壊さない)。
+    budget = _read_monthly_budget_usd(cwd or Path.cwd())
+    if budget is not None:
+        spent = _read_monthly_total_usd()
+        if spent >= budget:
+            return ReviewResult(
+                state="neutral",
+                summary=f"ai-ops review skipped (budget exceeded: ${spent:.4f} ≥ ${budget:.4f})",
+                body=(
+                    f"`ai-ops review-pr` skipped this PR because the monthly review "
+                    f"budget is reached: spent ${spent:.4f} of ${budget:.4f} cap "
+                    f"(set via `[review_budget].monthly_usd_limit` in `.ai-ops/harness.toml` "
+                    f"or `AI_OPS_REVIEW_BUDGET_USD_MONTH` env var)."
+                ),
+            )
     user_prompt = _format_user_prompt(ctx)
     raw: str | None
     input_tokens = output_tokens = 0
@@ -423,6 +569,9 @@ def review_with_llm(
     result = _parse_llm_response(raw)
     # Comment 末尾に cost footer を貼る (使用量 + 推定 USD)
     footer = _format_cost_footer(model, input_tokens, output_tokens)
+    # PR ε: 月次キャッシュに記録 (CR3 の closure)
+    cost = _estimate_cost_usd(model, input_tokens, output_tokens)
+    _append_cost_entry(ctx.repo, ctx.number, model, input_tokens, output_tokens, cost)
     return ReviewResult(
         state=result.state,
         summary=result.summary,
@@ -531,7 +680,7 @@ def run_review_pr(
     print(f"  context gathered: AGENTS.md={len(ctx.agents_md)} bytes, "
           f"ADRs={len(ctx.adrs)}, plan={'yes' if ctx.plan_md else 'no'}, "
           f"diff={len(ctx.diff)} bytes")
-    result = review_with_llm(ctx, provider=provider)
+    result = review_with_llm(ctx, provider=provider, cwd=work_dir)
     print(f"  result: state={result.state}  summary={result.summary}")
     if dry_run:
         print("  --dry-run: skipping Comment / status check post")
