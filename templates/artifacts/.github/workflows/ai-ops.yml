@@ -1,7 +1,7 @@
 name: ai-ops
 # Per-project caller of the ai-ops reusable workflow.
 # Distributed by `ai-ops setup ci`.
-# Bump `@v1` (or pin a SHA) to control the ai-ops version this project uses.
+# Pin to a tag (e.g. `@v1.0`) for reproducibility, or keep `@main` for latest.
 
 on:
   pull_request:
@@ -16,17 +16,20 @@ on:
 
 jobs:
   check:
-    uses: tekitounix/ai-ops/.github/workflows/managed-project-check.yml@v1
+    uses: tekitounix/ai-ops/.github/workflows/managed-project-check.yml@main
     with:
       tier: 'D'  # set to A/B/C/D per your project's tier
       ai_ops_ref: 'main'  # or a release tag like 'v0.1.0'
 
   review:
-    # ADR 0012: ai-ops 固有規約に対する AI レビュー。
+    # ADR 0012: ai-ops 固有規約に対する AI レビュー (PR ζ で 3 層構造に再設計)。
     # ANTHROPIC_API_KEY または OPENAI_API_KEY を repo secrets に登録すると有効化。
     # 両方無い場合は neutral status を返して skip する (CI を壊さない)。
-    uses: tekitounix/ai-ops/.github/workflows/managed-project-review.yml@v1
+    # PR η: secrets を明示渡し (inherit は startup_failure を起こすケースあり)。
+    uses: tekitounix/ai-ops/.github/workflows/managed-project-review.yml@main
     with:
       tier: 'D'
       ai_ops_ref: 'main'
-    secrets: inherit
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

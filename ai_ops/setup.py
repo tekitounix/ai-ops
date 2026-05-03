@@ -215,9 +215,21 @@ def run_setup_ci_workflow(
         print(f"Error: template missing: {template_path}", file=sys.stderr)
         return 1
     content = template_path.read_text(encoding="utf-8")
-    # Substitute tier and ai_ops_ref.
+    # Substitute tier, ai_ops_ref, and `@<ref>` pin in `uses:` lines.
+    # PR η: `@v1` had been hard-coded but ai-ops has no `v1` tag, so the
+    # reusable workflow load failed (startup_failure). The template now
+    # uses `@main` and we substitute it to whatever the user passes via
+    # `--ai-ops-ref`.
     content = content.replace("tier: 'D'", f"tier: '{tier}'")
     content = content.replace("ai_ops_ref: 'main'", f"ai_ops_ref: '{ai_ops_ref}'")
+    content = content.replace(
+        "managed-project-check.yml@main",
+        f"managed-project-check.yml@{ai_ops_ref}",
+    )
+    content = content.replace(
+        "managed-project-review.yml@main",
+        f"managed-project-review.yml@{ai_ops_ref}",
+    )
 
     files = {".github/workflows/ai-ops.yml": content}
     branch = "ai-ops/setup-ci-workflow"
