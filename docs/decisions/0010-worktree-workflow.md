@@ -65,9 +65,9 @@ Beyond 5, context-switching cost between terminals/editors typically outweighs t
 - **Create**: when starting a non-trivial plan and parallel work isolation is wanted, run `ai-ops worktree-new <slug>`. The helper creates the branch, the worktree, and a plan.md skeleton from `templates/plan.md` with Branch/Worktree fields pre-filled.
 - **Work**: all work for that plan happens in the worktree. The plan's Progress / Decision Log / etc. are updated there. Commits go on the branch.
 - **PR**: when ready, push the branch and open a PR (manually or via `gh pr create`).
-- **Merge**: after PR merge, the branch is auto-deleted on the remote (use `gh pr merge --delete-branch`).
-- **Archive plan**: move `docs/plans/<slug>/` to `docs/plans/archive/YYYY-MM-DD-<slug>/` (manually or via a future helper).
-- **Remove worktree**: `ai-ops worktree-cleanup` lists worktrees whose branches are merged AND plans are archived, and offers to remove them. `--auto` removes without confirmation; default is interactive.
+- **Merge**: after PR merge the branch is deleted on the remote. ai-ops itself sets the repository's `Automatically delete head branches` setting (`gh repo edit --delete-branch-on-merge`) so deletion happens regardless of whether the merger passed `--delete-branch`. Always confirm post-merge with `git fetch --prune origin && git ls-remote --heads origin`; if a stale ref remains, recover with `git push origin --delete <branch>`.
+- **Archive plan** (mandatory before worktree removal): from the primary worktree on `main`, run `git pull --ff-only` to take in the merged PR, then `git mv docs/plans/<slug> docs/plans/archive/YYYY-MM-DD-<slug>` and commit + push the archive move. **Tier A** (ai-ops itself, trunk-based) pushes the archive commit straight to `main`. **Tier B / C** (PR-required) opens a one-commit "chore(plans): archive <slug> plan" PR and merges it the normal way.
+- **Remove worktree**: `ai-ops worktree-cleanup` lists worktrees whose branches are merged AND plans are archived, and offers to remove them. `--auto` removes without confirmation; default is interactive. The two signals are required together because either alone leaves a hidden risk: an unarchived plan signals work that may not have shipped, and an unmerged branch signals work whose disposition is unknown.
 
 **5. Coordination across parallel worktrees**
 

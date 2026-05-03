@@ -12,25 +12,13 @@ This repo is the cross-project AI operations source of truth. Keep it small. If 
 - Do not create repos under Desktop, Documents, or ad-hoc work directories.
 - Cross-repo references in committed docs use URLs (`https://github.com/<owner>/<repo>/...`). Use `~/ghq/...` only when explaining the local working layout; do not use local paths for committed references to other repositories.
 
-## Lifecycle
+## Lifecycle and CLI
 
-Use `README.md` as the user-facing entrypoint.
+Master operation guide: `docs/operation.md`. It documents the canonical lifecycle (`Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -> Adopt`), the sub-flow selector (new project / migrate / realign / relocate / projects audit / self-operation / propagation), and a CLI quick reference grouped by intent.
 
-```text
-Intake -> Discovery -> Brief -> Proposal -> Confirm -> Agent Execute -> Verify -> Adopt
-```
+User-facing entrypoint: `README.md`. The README's second Quick start prompt (`align this project`) decides between migrate / realign / relocate / no-op for a single working tree; the third (`audit my projects`) sweeps every ghq-tracked project and routes each P0 / P1 finding into the matching sub-flow with its own confirmation. Both prompts include `docs/projects-audit.md` and `docs/project-relocation.md` as their authoritative playbooks.
 
-- New project brief: `templates/project-brief.md`.
-- Migration brief: `templates/migration-brief.md`.
-- Handoff brief: `templates/agent-handoff.md`.
-- Canonical workflow: `docs/ai-first-lifecycle.md`.
-- Detailed guide: `docs/project-addition-and-migration.md`.
-- Realignment (already-running, drifted projects): `docs/realignment.md`.
-- Project physical relocation (`~/work/...` → `~/ghq/...`): `docs/project-relocation.md`.
-- Projects audit (all ghq-tracked projects at once): `docs/projects-audit.md`.
-- Self-operation: `docs/self-operation.md`.
-
-The README's second Quick start prompt (`align this project`) is one entry point: read the cwd, decide between migrate / realign / relocate / no-op, then follow the doc that matches the chosen sub-flow. The third prompt (`audit my projects`) sweeps every ghq-tracked project: walk `ghq list -p`, score each project, route every P0 / P1 finding into the matching single-project sub-flow with its own confirmation.
+`ai-ops` is the Python CLI (installed console script, `python -m ai_ops`, or `nix run github:<owner>/ai-ops -- ...`). The full subcommand list with all flags lives in `docs/operation.md` (intent-grouped) and `ai-ops --help` (authoritative). Do not duplicate it here.
 
 ## Plans
 
@@ -38,42 +26,11 @@ Use `docs/plans/<slug>/plan.md` for non-trivial execution-time plans that need h
 
 Improvement capture loop (作業中の学びを durable 化する手順) は `docs/self-operation.md` と `docs/ai-first-lifecycle.md` を参照。
 
-`ai-ops` is the Python CLI: installed console script, `python -m ai_ops`, or `nix run github:<owner>/ai-ops -- ...`.
+## Cross-cutting CLI behavior
 
-Subcommands:
-
-- `ai-ops new <name> --purpose "..."` - assemble prompt + Brief draft for a new project.
-- `ai-ops migrate <path>` - read-only discovery + Brief for migrating an existing project.
-- `ai-ops migrate <path> --retrofit-nix` - narrow scope: add `flake.nix` + `.envrc` to an already-managed project.
-- `ai-ops bootstrap` - survey required tools (git / ghq / direnv / jq / gh / nix at tier 1; shellcheck / actionlint / gitleaks / fzf / rg at tier 2) and install missing ones with user confirmation (Operation Model). `--tier` defaults to 1 (required only); pass `--tier 2` to also install recommended tools.
-- `ai-ops update` - survey present tools and update them with user confirmation. `--tier` defaults to 2 (required + recommended).
-- `ai-ops audit lifecycle` - self-audit for ai-ops itself (incl. Phase 8-D forbidden-pattern grep + README claim verification + Phase 9 plan hygiene warnings + optional OpenSSF Scorecard).
-- `ai-ops audit nix` - current cwd Nix audit (Stage A/B/C rubric per ADR 0005).
-- `ai-ops audit nix --report` - walk `ghq list -p` and print a Nix-gap table for every project.
-- `ai-ops audit nix --propose <path>` - emit Markdown retrofit proposal for one project.
-- `ai-ops audit harness [--path PATH] [--strict]` - detect harness drift (Phase 8-B, L3): missing / modified / extra harness files vs `.ai-ops/harness.toml`. Default returns 0 with a WARN when manifest is absent but harness files exist (so the audit can sweep pre-adoption repos); `--strict` flips that to FAIL.
-- `ai-ops audit standard --since REF [--path PATH]` - detect ADR (docs/decisions/) changes since a reference (Phase 8-C, L4).
-- `ai-ops audit projects [--json] [--priority {P0,P1,P2,all}]` - walk `ghq list -p`, score each project on 8 signals, emit priority-sorted table (or JSON). Exit 1 when any P0/P1 remains; backs the `audit my projects` Quick start prompt and is safe to run from cron / CI.
-- `ai-ops audit security` - secret scan (works in any cwd).
-- `ai-ops check` - all audits + pytest.
-- `ai-ops promote-plan <slug> [--source PATH] [--dry-run]` - read a user-selected local AI plan and propose a repo-local `docs/plans/<slug>/plan.md`; writing requires explicit confirmation.
-- `ai-ops propagate-anchor (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that bump `.ai-ops/harness.toml`'s `ai_ops_sha` to the current ai-ops HEAD in managed projects whose only drift is the anchor (file content untouched). Worktree-isolated, per-project confirmation by default; `--auto-yes` skips confirmation for CI use (ADR 0011).
-- `ai-ops propagate-init (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that commit `.ai-ops/harness.toml` from the user's working copy in projects where the manifest exists on disk but is not yet tracked. Validates manifest parses before proposing.
-- `ai-ops propagate-files (--all | --project PATH) [--dry-run] [--auto-yes]` - open PRs that refresh `[harness_files]` hashes in `.ai-ops/harness.toml` to match actual file contents on the default branch. No file content is modified; only the manifest's hash records are updated. Other sections (`ai_ops_sha`, `last_sync`, `[project_checks]`, comments) are preserved verbatim.
-- `ai-ops worktree-new <slug> [--type TYPE] [--base BASE] [--dry-run]` - create a sibling git worktree (`<repo-parent>/<repo-name>.<slug>/`) bound 1:1:1 to a `<type>/<slug>` branch and a `docs/plans/<slug>/plan.md` skeleton (ADR 0010). Default `--type=feat`, `--base=main`.
-- `ai-ops worktree-cleanup [--auto] [--dry-run]` - remove worktrees whose branch's PR is merged AND whose plan is archived (both signals required). Default is per-worktree confirmation; `--auto` skips confirmation.
-- `ai-ops report-drift [--repo OWNER/NAME] [--audit-json PATH] [--dry-run]` - translate `audit projects --json` output into ai-ops-repo Issues / sub-issues for the Ecosystem dashboard (ADR 0011). Invoked from `.github/workflows/ecosystem-watch.yml` on schedule.
-- `ai-ops setup-ci-workflow --project PATH [--tier {A,B,C,D}] [--ai-ops-ref REF] [--dry-run]` - open a PR adding `.github/workflows/ai-ops.yml` (caller of the reusable `managed-project-check.yml`) to a managed project (ADR 0011).
-- `ai-ops setup-codeowners --project PATH [--owner GH_USER] [--dry-run]` - open a PR adding `.github/CODEOWNERS` that routes ai-ops-related changes to the project owner.
-- `ai-ops setup-ruleset --project PATH --tier {A,B,C} [--dry-run]` - apply a tier ruleset via `gh api repos/.../rulesets` (upserts existing or creates new). Tier D = no ruleset.
-
-`migrate` flags include `--retrofit-nix` (Nix-only) and `--update-harness` (harness drift remediation, AI agent narrows scope to file restoration / hash refresh).
-
-`new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
-
-Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers, but it does propose installs via `bootstrap` / `update`.
-
-When already running inside an AI agent, do not call another AI via `ai-ops --agent claude` or `ai-ops --agent codex`. Use docs directly, or use `--agent prompt-only` / `--dry-run` for prompt and discovery output only.
+- `new` / `migrate` `--nix` flag: `auto` (default; AI decides via per-project rubric), `none` (justification required in brief), `devshell`, `apps`, `full`.
+- Reproducibility tools (Tier 1 includes `nix`) are installed only with explicit user confirmation per Operation Model. ai-ops does not silently mutate `~/.zshrc`, package managers, or OS schedulers, but it does propose installs via `bootstrap` / `update`.
+- When already running inside an AI agent, do not call another AI via `ai-ops --agent claude` or `ai-ops --agent codex`. Use docs directly, or use `--agent prompt-only` / `--dry-run` for prompt and discovery output only.
 
 ## Operation Model
 
